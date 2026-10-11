@@ -9,12 +9,13 @@ Leaf is a responsive, installable single-page app for keeping a personal book ca
 - Add multiple tags to a book, create or reuse tag suggestions, and filter by one or more tags (a book must have every selected tag).
 - Add a cover photo, reading status, publication year, page count, ISBN, and notes now or later.
 - Search and sort books; filter by reading status.
-- Switch the collection between small tiles, large tiles, a table, and a list; the selected view is remembered on this device.
+- Switch the collection between compact tiles, small tiles, large tiles, a table, and a list; the selected view is remembered on this device.
 - See a loading indicator while the collection is being fetched.
 - Change a book's status directly from its card, or edit/remove it.
 - Switch between light and dark themes.
 - Install it as a PWA on supported desktop and mobile browsers.
 - Use Supabase Auth, Postgres, and private Supabase Storage when configured.
+- Load private cover images only as they approach the visible area. Existing covers use Supabase image transformations when enabled for the project, with automatic original-image fallback. New large JPEG, PNG, and WebP covers are resized and converted to WebP when that reduces file size.
 
 Without Supabase credentials, the app works in a local-only mode and saves its catalog in that browser's local storage. This is useful for trying the interface, but it is not a private, backed-up database and does not sync between devices.
 

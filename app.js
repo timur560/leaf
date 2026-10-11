@@ -9,7 +9,7 @@
   const STORAGE_KEY = "leaf-library-books-v1";
   const THEME_KEY = "leaf-library-theme";
   const VIEW_KEY = "leaf-library-view";
-  const BOOK_VIEWS = ["small", "large", "table", "list"];
+  const BOOK_VIEWS = ["compact", "small", "large", "table", "list"];
   const config = window.LEAF_CONFIG || {};
   const remoteEnabled = Boolean(config.supabaseUrl && config.supabaseAnonKey);
   const supabase = remoteEnabled && window.supabase
@@ -36,6 +36,10 @@
   let currentUser = null;
   let toastTimer;
   let isLoading = false;
+  let coverObserver = null;
+  let coverTransformsSupported = null;
+  let coverTransformCheck = null;
+  const coverUrlCache = new Map();
   let bookView = BOOK_VIEWS.includes(localStorage.getItem(VIEW_KEY))
     ? localStorage.getItem(VIEW_KEY)
     : "small";
@@ -167,6 +171,81 @@
       : "";
   }
 
+  function getSignedCoverUrl(path, optimize = false) {
+    const cacheKey = `${optimize ? "thumbnail" : "original"}:${path}`;
+    const cached = coverUrlCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.promise;
+
+    const entry = {
+      expiresAt: Date.now() + 55 * 60 * 1000,
+      promise: supabase.storage.from("book-covers").createSignedUrl(path, 3600, optimize ? {
+        transform: { width: 420, height: 560, resize: "contain", quality: 70 }
+      } : undefined)
+        .then(({ data, error }) => {
+          if (error) throw error;
+          if (!data?.signedUrl) throw new Error("Supabase did not return a signed cover URL.");
+          return data.signedUrl;
+        })
+        .catch(error => {
+          coverUrlCache.delete(cacheKey);
+          throw error;
+        })
+    };
+    coverUrlCache.set(cacheKey, entry);
+    return entry.promise;
+  }
+
+  function supportsCoverTransforms(path) {
+    if (coverTransformsSupported !== null) return Promise.resolve(coverTransformsSupported);
+    if (!coverTransformCheck) {
+      coverTransformCheck = getSignedCoverUrl(path, true).then(url => new Promise(resolve => {
+        const probe = new Image();
+        probe.onload = () => resolve(true);
+        probe.onerror = () => resolve(false);
+        probe.src = url;
+      })).catch(() => false).then(supported => {
+        coverTransformsSupported = supported;
+        return supported;
+      });
+    }
+    return coverTransformCheck;
+  }
+
+  async function getDisplayCoverUrl(path) {
+    const optimize = await supportsCoverTransforms(path);
+    return getSignedCoverUrl(path, optimize);
+  }
+
+  async function loadCoverImage(image) {
+    const path = image.dataset.coverPath;
+    if (!path) return;
+    try {
+      const url = await getDisplayCoverUrl(path);
+      if (image.isConnected && image.dataset.coverPath === path) image.src = url;
+    } catch (error) {
+      notify(`Could not load cover: ${error.message}`);
+    }
+  }
+
+  function observeBookCovers() {
+    const images = grid.querySelectorAll("img[data-cover-path]");
+    if (!images.length) return;
+    if (!("IntersectionObserver" in window)) {
+      images.forEach(image => loadCoverImage(image));
+      return;
+    }
+    if (!coverObserver) {
+      coverObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          coverObserver.unobserve(entry.target);
+          loadCoverImage(entry.target);
+        });
+      }, { rootMargin: "250px 0px" });
+    }
+    images.forEach(image => coverObserver.observe(image));
+  }
+
   function render() {
     const filtered = getFilteredBooks();
     const authors = getAuthors();
@@ -204,8 +283,12 @@
       const initial = safeText((book.title || "?").trim().charAt(0).toLocaleUpperCase());
       const gradient = ["sage", "rose", "ochre", "blue"][Array.from(book.title || "").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4];
       const image = book.cover_url
-        ? `<img src="${safeText(book.cover_url)}" alt="" loading="lazy">`
-        : `<div class="cover-placeholder ${gradient}"><span class="cover-initial">${initial}</span><span class="cover-spine"></span></div>`;
+        ? `<img src="${safeText(book.cover_url)}" alt="" loading="lazy" decoding="async">`
+        : `<div class="cover-placeholder ${gradient}"><span class="cover-initial">${initial}</span><span class="cover-spine"></span></div>${
+          supabase && book.cover_path
+            ? `<img data-cover-path="${safeText(book.cover_path)}" alt="" loading="lazy" decoding="async">`
+            : ""
+        }`;
       const detailLine = [book.year, book.pages ? `${book.pages} pages` : ""].filter(Boolean).join(" · ");
       const authorsLabel = getBookAuthors(book).join(", ");
       const bookTags = getBookTags(book);
@@ -246,12 +329,14 @@
         </div>
       </article>`;
     }).join("");
+    if (coverObserver) coverObserver.disconnect();
     grid.innerHTML = bookView === "table"
       ? `<div class="book-table-wrap"><table class="book-table">
           <thead><tr><th scope="col">Title</th><th scope="col">Authors</th><th scope="col">Year</th><th scope="col">Pages</th><th scope="col">Tags</th><th scope="col">Status</th></tr></thead>
           <tbody>${bookMarkup}</tbody>
         </table></div>`
       : bookMarkup;
+    if (bookView !== "table") observeBookCovers();
 
     const count = books.length;
     $("#count-all").textContent = count;
@@ -357,16 +442,7 @@
       }
       const { data, error } = await supabase.from("books").select("*").order("created_at", { ascending: false });
       if (error) throw error;
-      books = await Promise.all((data || []).map(async book => {
-        if (!book.cover_path) return book;
-        const { data: signed, error: signedError } = await supabase.storage.from("book-covers")
-          .createSignedUrl(book.cover_path, 3600);
-        if (signedError) {
-          notify(`Could not load cover for “${book.title}”: ${signedError.message}`);
-          return book;
-        }
-        return { ...book, cover_url: signed.signedUrl };
-      }));
+      books = data || [];
       $("#sync-status").textContent = "SYNCED WITH SUPABASE";
     } finally {
       isLoading = false;
@@ -381,6 +457,7 @@
     $("#account-mode").textContent = user ? "Private collection" : "Sign in to your library";
     if (!user) {
       books = [];
+      coverUrlCache.clear();
       render();
       if (supabase && !authDialog.open) authDialog.showModal();
     } else if (authDialog.open) authDialog.close();
@@ -437,24 +514,54 @@
       $("#cover-preview").textContent = "";
       $("#cover-preview").style.backgroundImage = `url("${book.cover_data.replace(/["\\]/g, "")}")`;
       $("#cover-label").textContent = "Change cover photo";
+    } else if (book.cover_path && supabase) {
+      getDisplayCoverUrl(book.cover_path).then(url => {
+        if (editingId !== id || coverFile) return;
+        $("#cover-preview").textContent = "";
+        $("#cover-preview").style.backgroundImage = `url("${url.replace(/["\\]/g, "")}")`;
+        $("#cover-label").textContent = "Change cover photo";
+      }).catch(error => notify(`Could not load cover: ${error.message}`));
     }
     bookDialog.showModal();
   }
 
+  async function optimizeCoverImage(file) {
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) ||
+        typeof createImageBitmap !== "function" || file.size < 50 * 1024) return file;
+
+    const bitmap = await createImageBitmap(file);
+    try {
+      const scale = Math.min(1, 1400 / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Could not prepare the cover image for optimization.");
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/webp", 0.78));
+      if (!blob || blob.size >= file.size) return file;
+      const name = file.name.replace(/\.[^.]+$/, "") || "book-cover";
+      return new File([blob], `${name}.webp`, { type: "image/webp", lastModified: file.lastModified });
+    } finally {
+      bitmap.close();
+    }
+  }
+
   async function getCoverPath(file, oldPath) {
     if (!file) return oldPath || null;
+    const optimizedFile = await optimizeCoverImage(file);
     if (!supabase) {
       return await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = () => reject(new Error("Could not read the selected cover image."));
-        reader.readAsDataURL(file);
+        reader.readAsDataURL(optimizedFile);
       });
     }
-    const extension = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+    const extension = (optimizedFile.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
     const path = `${currentUser.id}/${localId()}.${extension}`;
-    const { error } = await supabase.storage.from("book-covers").upload(path, file, {
-      contentType: file.type || "image/jpeg",
+    const { error } = await supabase.storage.from("book-covers").upload(path, optimizedFile, {
+      contentType: optimizedFile.type || "image/jpeg",
       upsert: false
     });
     if (error) throw error;
