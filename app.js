@@ -23,6 +23,7 @@
 
   let books = [];
   let activeFilter = "all";
+  let selectedAuthor = "";
   let searchTerm = "";
   let editingId = null;
   let coverFile = null;
@@ -78,13 +79,29 @@
     return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
+  function getAuthors() {
+    const authors = new Map();
+    books.forEach(book => {
+      const name = String(book.author || "").trim();
+      const key = name.toLocaleLowerCase();
+      if (!name) return;
+      const author = authors.get(key) || { name, count: 0 };
+      author.count += 1;
+      authors.set(key, author);
+    });
+    return [...authors.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   function getFilteredBooks() {
     const normalizedSearch = searchTerm.trim().toLocaleLowerCase();
     return books.filter(book => {
-      const matchesFilter = activeFilter === "all" || book.status === activeFilter;
+      const matchesStatus = activeFilter === "all" || activeFilter === "authors" ||
+        activeFilter === "author-books" || book.status === activeFilter;
+      const matchesAuthor = activeFilter !== "author-books" ||
+        String(book.author || "").trim().toLocaleLowerCase() === selectedAuthor.toLocaleLowerCase();
       const matchesSearch = !normalizedSearch || [book.title, book.author, book.isbn, book.notes]
         .some(value => String(value || "").toLocaleLowerCase().includes(normalizedSearch));
-      return matchesFilter && matchesSearch;
+      return matchesStatus && matchesAuthor && matchesSearch;
     }).sort((a, b) => {
       switch ($("#sort-select").value) {
         case "title": return a.title.localeCompare(b.title);
@@ -97,6 +114,24 @@
 
   function render() {
     const filtered = getFilteredBooks();
+    const authors = getAuthors();
+    const authorDirectory = activeFilter === "authors";
+    const authorBooks = activeFilter === "author-books";
+    $("#author-suggestions").innerHTML = authors
+      .map(author => `<option value="${safeText(author.name)}"></option>`).join("");
+    $("#count-authors").textContent = authors.length;
+    $("#authors-grid").hidden = !authorDirectory;
+    $("#authors-grid").innerHTML = authorDirectory ? authors
+      .filter(author => !searchTerm.trim() || author.name.toLocaleLowerCase().includes(searchTerm.trim().toLocaleLowerCase()))
+      .map(author => `<button class="author-card" type="button" data-author="${safeText(author.name)}">
+        <span class="author-avatar" aria-hidden="true">${safeText(author.name.trim().charAt(0).toLocaleUpperCase())}</span>
+        <span class="author-card-copy"><strong>${safeText(author.name)}</strong><small>${author.count} ${author.count === 1 ? "book" : "books"}</small></span>
+        <span class="author-arrow" aria-hidden="true">↗</span>
+      </button>`).join("") : "";
+    const visibleAuthors = authorDirectory
+      ? authors.filter(author => !searchTerm.trim() || author.name.toLocaleLowerCase().includes(searchTerm.trim().toLocaleLowerCase()))
+      : [];
+    $("#book-grid").hidden = authorDirectory || filtered.length === 0;
     grid.innerHTML = filtered.map(book => {
       const initial = safeText((book.title || "?").trim().charAt(0).toLocaleUpperCase());
       const gradient = ["sage", "rose", "ochre", "blue"][Array.from(book.title || "").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4];
@@ -129,16 +164,25 @@
     $("#count-want").textContent = books.filter(book => book.status === "want").length;
     $("#stat-total").textContent = count;
     $("#stat-read").textContent = books.filter(book => book.status === "read").length;
-    $("#results-label").textContent = `${filtered.length} ${filtered.length === 1 ? "book" : "books"}`;
-    $("#section-title").textContent = activeFilter === "all" ? "Your collection" : STATUS[activeFilter] === "Finished" ? "Finished books" : STATUS[activeFilter];
-    $("#empty-state").hidden = filtered.length > 0;
-    grid.hidden = filtered.length === 0;
-    const noMatch = count > 0 && filtered.length === 0;
-    $("#empty-title").textContent = noMatch ? "No books found." : "Your shelves are waiting.";
-    $("#empty-copy").textContent = noMatch
-      ? "Try another search or choose a different shelf."
-      : "Start with a title and author. You can fill in the rest whenever you like.";
-    $("#empty-add").hidden = noMatch || activeFilter !== "all";
+    $("#results-label").textContent = authorDirectory
+      ? `${visibleAuthors.length} ${visibleAuthors.length === 1 ? "author" : "authors"}`
+      : `${filtered.length} ${filtered.length === 1 ? "book" : "books"}`;
+    $("#section-title").textContent = authorDirectory ? "All authors" : authorBooks ? selectedAuthor :
+      activeFilter === "all" ? "Your collection" : STATUS[activeFilter] === "Finished" ? "Finished books" : STATUS[activeFilter];
+    $("#view-title").textContent = authorDirectory ? "Authors" : authorBooks ? selectedAuthor :
+      activeFilter === "all" ? "All books" : STATUS[activeFilter];
+    const noMatch = authorDirectory ? visibleAuthors.length === 0 : filtered.length === 0;
+    $("#empty-state").hidden = !noMatch;
+    $("#empty-title").textContent = authorDirectory
+      ? (authors.length && searchTerm ? "No authors found." : "No authors yet.")
+      : count > 0 ? "No books found." : "Your shelves are waiting.";
+    $("#empty-copy").textContent = authorDirectory
+      ? (authors.length && searchTerm ? "Try another search to find an author." : "Authors will appear here as you add books to your library.")
+      : count > 0
+        ? "Try another search or choose a different shelf."
+        : "Start with a title and author. You can fill in the rest whenever you like.";
+    $("#empty-add").hidden = authorDirectory || count > 0 || activeFilter !== "all";
+    $("#sort-select").closest(".sort-select").hidden = authorDirectory;
     const currentBook = books.find(book => book.status === "reading");
     $("#reading-card").hidden = !currentBook || activeFilter !== "all";
     if (currentBook) {
@@ -146,6 +190,24 @@
       $("#reading-author").textContent = `by ${currentBook.author}`;
       $("#continue-reading").dataset.edit = currentBook.id;
     }
+    document.querySelectorAll("[data-filter]").forEach(button => {
+      button.classList.toggle("active", button.dataset.filter === activeFilter ||
+        (activeFilter === "author-books" && button.dataset.filter === "authors"));
+    });
+  }
+
+  function activateFilter(filter) {
+    activeFilter = filter;
+    selectedAuthor = "";
+    render();
+  }
+
+  function showAuthorBooks(name) {
+    selectedAuthor = name;
+    activeFilter = "author-books";
+    searchTerm = "";
+    $("#search-input").value = "";
+    render();
   }
 
   async function loadBooks() {
@@ -414,11 +476,13 @@
       if (select) updateStatus(select.dataset.status, select.value);
     });
     document.querySelectorAll("[data-filter]").forEach(button => button.addEventListener("click", () => {
-      activeFilter = button.dataset.filter;
-      document.querySelectorAll("[data-filter]").forEach(item => item.classList.toggle("active", item === button));
-      $("#view-title").textContent = activeFilter === "all" ? "All books" : STATUS[activeFilter];
-      render();
+      activateFilter(button.dataset.filter);
     }));
+    $("#authors-button").addEventListener("click", () => activateFilter("authors"));
+    $("#authors-grid").addEventListener("click", event => {
+      const authorCard = event.target.closest("[data-author]");
+      if (authorCard) showAuthorBooks(authorCard.dataset.author);
+    });
     $("#search-input").addEventListener("input", event => {
       searchTerm = event.target.value;
       render();

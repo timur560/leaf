@@ -26,6 +26,7 @@
           <button class="nav-item" data-filter="reading"><span class="nav-icon">◷</span> Currently reading <span class="nav-count" id="count-reading">0</span></button>
           <button class="nav-item" data-filter="read"><span class="nav-icon">✓</span> Finished <span class="nav-count" id="count-read">0</span></button>
           <button class="nav-item" data-filter="want"><span class="nav-icon">♡</span> Want to read <span class="nav-count" id="count-want">0</span></button>
+          <button class="nav-item" data-filter="authors" id="authors-nav"><span class="nav-icon">♙</span> Authors <span class="nav-count" id="count-authors">0</span></button>
         </nav>
         <div class="sidebar-bottom">
           <div class="quote-mark">“</div>
@@ -49,6 +50,7 @@
               <input id="search-input" type="search" placeholder="Search books..." autocomplete="off" aria-label="Search books">
               <kbd>⌘ K</kbd>
             </label>
+            <button class="secondary-button authors-top-button" id="authors-button" type="button">Authors</button>
             <button class="icon-button theme-button" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">☼</button>
             <button class="primary-button add-button" id="add-book" type="button"><span>＋</span> Add a book</button>
           </div>
@@ -87,6 +89,7 @@
           </div>
 
           <div class="book-grid" id="book-grid" aria-live="polite"></div>
+          <div class="authors-grid" id="authors-grid" aria-live="polite" hidden></div>
           <div class="empty-state" id="empty-state" hidden>
             <div class="empty-art" aria-hidden="true"><span>✳</span><i></i><b></b></div>
             <h3 id="empty-title">Your shelves are waiting.</h3>
@@ -106,7 +109,7 @@
         </div>
         <div class="quick-fields">
           <label class="field"><span>BOOK TITLE <em>*</em></span><input name="title" required maxlength="180" placeholder="The book's title" autocomplete="off"></label>
-          <label class="field"><span>AUTHOR <em>*</em></span><input name="author" required maxlength="140" placeholder="Who wrote it?" autocomplete="off"></label>
+          <label class="field"><span>AUTHOR <em>*</em></span><input name="author" list="author-suggestions" required maxlength="140" placeholder="Who wrote it?" autocomplete="off"><datalist id="author-suggestions"></datalist></label>
         </div>
         <details class="more-details" id="more-details">
           <summary><span class="summary-plus">＋</span> Add more details <span class="optional">OPTIONAL</span></summary>

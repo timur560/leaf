@@ -45,7 +45,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--page); color: var(--text); }
+body { margin: 0; min-width: 0; min-height: 100vh; background: var(--page); color: var(--text); }
 button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, summary:focus-visible {
@@ -115,6 +115,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .primary-button:hover { background: var(--green-hover); transform: translateY(-1px); }
 .primary-button:disabled { opacity: .6; cursor: wait; transform: none; }
 .add-button span { font-size: 15px; font-weight: 400; }
+.authors-top-button { display: none; min-height: 35px; padding: 0 10px; }
 .library-content { width: min(1080px, 100%); margin: 0 auto; padding: 47px 5.1% 22px; }
 .welcome-row { display: flex; align-items: end; justify-content: space-between; gap: 20px; padding-bottom: 34px; }
 .welcome-row .eyebrow { color: var(--green); }
@@ -141,6 +142,18 @@ h1 { margin: 15px 0 9px; font-family: "Playfair Display", Georgia, serif; font-s
 .sort-select { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 9px; }
 .sort-select select { padding: 6px 18px 6px 3px; border: 0; background: transparent; color: var(--text); font-size: 9px; font-weight: 600; cursor: pointer; }
 .book-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 25px 21px; }
+.authors-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.author-card {
+  display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 79px; padding: 13px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); text-align: left; cursor: pointer;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.author-card:hover { border-color: color-mix(in srgb, var(--green) 45%, var(--line)); box-shadow: var(--shadow); transform: translateY(-2px); }
+.author-avatar { display: grid; flex: 0 0 39px; place-items: center; width: 39px; height: 39px; border-radius: 50%; background: var(--green-pale); color: var(--green); font-family: "Playfair Display", Georgia, serif; font-size: 18px; }
+.author-card-copy { display: grid; min-width: 0; gap: 5px; }
+.author-card-copy strong { overflow: hidden; color: var(--text); font-family: "Playfair Display", Georgia, serif; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.author-card-copy small { color: var(--muted); font-size: 9px; }
+.author-arrow { margin-left: auto; color: var(--soft); font-size: 13px; }
 .book-card { min-width: 0; }
 .book-cover {
   position: relative; display: block; width: 100%; aspect-ratio: .75; padding: 0; overflow: hidden; border: 0; border-radius: 4px;
@@ -239,6 +252,7 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
   .breadcrumb { display: none; }
   .top-actions { gap: 8px; }
   .search-box { width: min(32vw, 150px); height: 33px; }
+  .authors-top-button { display: inline-flex; min-height: 33px; font-size: 9px; }
   .search-box kbd { display: none; }
   .theme-button { flex: 0 0 33px; width: 33px; height: 33px; }
   .add-button { min-height: 33px; padding: 0 10px; font-size: 9px; }
@@ -251,6 +265,10 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
   .reading-card { margin-bottom: 28px; padding: 13px; }
   .section-toolbar h2 { font-size: 19px; }
   .book-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 21px 13px; }
+  .authors-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .author-card { gap: 8px; min-height: 67px; padding: 9px; }
+  .author-avatar { flex-basis: 32px; width: 32px; height: 32px; font-size: 15px; }
+  .author-card-copy strong { font-size: 11px; }
   .status-badge { top: 6px; left: 5px; max-width: calc(100% - 10px); padding: 4px 5px; font-size: 7px; }
   .book-card h3 { font-size: 12px; }
   .book-author { font-size: 9px; }
@@ -268,6 +286,7 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
   .search-box:focus-within input { position: static; width: 100%; height: auto; opacity: 1; }
   .search-box > span { font-size: 19px; }
   .add-button { gap: 4px; padding-inline: 8px; font-size: 8px; }
+  .authors-top-button { padding-inline: 7px; font-size: 8px; }
   .library-content { padding-inline: 15px; }
   .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 16px; }
   .book-card h3 { font-size: 13px; }
@@ -277,6 +296,12 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
   .full-field { grid-column: auto; }
   .book-dialog form, .auth-dialog form { padding: 23px 20px 18px; }
   .dialog-heading h2 { font-size: 26px; }
+}
+@media (max-width: 360px) {
+  .authors-top-button { width: 31px; padding: 0; font-size: 0; }
+  .authors-top-button::before { content: "♙"; font-size: 14px; }
+  .add-button { width: 33px; padding-inline: 0; font-size: 0; }
+  .add-button span { font-size: 17px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -5,6 +5,7 @@ Leaf is a responsive, installable single-page app for keeping a personal book ca
 ## What it can do
 
 - Add a book quickly with only its title and author.
+- Reuse authors from a suggestion dropdown, browse all authors, and open an author's books.
 - Add a cover photo, reading status, publication year, page count, ISBN, and notes now or later.
 - Search and sort books; filter by reading status.
 - Change a book's status directly from its card, or edit/remove it.
