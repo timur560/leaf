@@ -24,6 +24,9 @@
   let books = [];
   let activeFilter = "all";
   let selectedAuthor = "";
+  let selectedTags = [];
+  let draftAuthors = [];
+  let draftTags = [];
   let searchTerm = "";
   let editingId = null;
   let coverFile = null;
@@ -79,17 +82,46 @@
     return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
+  function uniqueNames(values) {
+    const names = new Map();
+    (Array.isArray(values) ? values : []).forEach(value => {
+      const name = String(value || "").trim();
+      const key = name.toLocaleLowerCase();
+      if (name && !names.has(key)) names.set(key, name);
+    });
+    return [...names.values()];
+  }
+
+  function getBookAuthors(book) {
+    return uniqueNames(Array.isArray(book.authors) && book.authors.length ? book.authors : [book.author]);
+  }
+
+  function getBookTags(book) {
+    return uniqueNames(book.tags);
+  }
+
   function getAuthors() {
     const authors = new Map();
     books.forEach(book => {
-      const name = String(book.author || "").trim();
-      const key = name.toLocaleLowerCase();
-      if (!name) return;
-      const author = authors.get(key) || { name, count: 0 };
-      author.count += 1;
-      authors.set(key, author);
+      getBookAuthors(book).forEach(name => {
+        const key = name.toLocaleLowerCase();
+        const author = authors.get(key) || { name, count: 0 };
+        author.count += 1;
+        authors.set(key, author);
+      });
     });
     return [...authors.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  function getTags() {
+    const tags = new Map();
+    books.forEach(book => getBookTags(book).forEach(name => {
+      const key = name.toLocaleLowerCase();
+      const tag = tags.get(key) || { name, count: 0 };
+      tag.count += 1;
+      tags.set(key, tag);
+    }));
+    return [...tags.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
   function getFilteredBooks() {
@@ -98,10 +130,13 @@
       const matchesStatus = activeFilter === "all" || activeFilter === "authors" ||
         activeFilter === "author-books" || book.status === activeFilter;
       const matchesAuthor = activeFilter !== "author-books" ||
-        String(book.author || "").trim().toLocaleLowerCase() === selectedAuthor.toLocaleLowerCase();
-      const matchesSearch = !normalizedSearch || [book.title, book.author, book.isbn, book.notes]
+        getBookAuthors(book).some(author => author.toLocaleLowerCase() === selectedAuthor.toLocaleLowerCase());
+      const bookTags = getBookTags(book).map(tag => tag.toLocaleLowerCase());
+      const matchesTags = selectedTags.every(tag => bookTags.includes(tag.toLocaleLowerCase()));
+      const searchable = [book.title, ...getBookAuthors(book), ...getBookTags(book), book.isbn, book.notes];
+      const matchesSearch = !normalizedSearch || searchable
         .some(value => String(value || "").toLocaleLowerCase().includes(normalizedSearch));
-      return matchesStatus && matchesAuthor && matchesSearch;
+      return matchesStatus && matchesAuthor && matchesTags && matchesSearch;
     }).sort((a, b) => {
       switch ($("#sort-select").value) {
         case "title": return a.title.localeCompare(b.title);
@@ -115,10 +150,19 @@
   function render() {
     const filtered = getFilteredBooks();
     const authors = getAuthors();
+    const tags = getTags();
     const authorDirectory = activeFilter === "authors";
     const authorBooks = activeFilter === "author-books";
     $("#author-suggestions").innerHTML = authors
       .map(author => `<option value="${safeText(author.name)}"></option>`).join("");
+    $("#tag-suggestions").innerHTML = tags
+      .map(tag => `<option value="${safeText(tag.name)}"></option>`).join("");
+    $("#tag-filter-options").innerHTML = tags.length ? tags.map(tag => {
+      const checked = selectedTags.some(selected => selected.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
+      return `<label class="tag-filter-option"><input type="checkbox" value="${safeText(tag.name)}" ${checked ? "checked" : ""}><span>${safeText(tag.name)}</span><small>${tag.count}</small></label>`;
+    }).join("") : `<p class="no-tags">Add tags to books to filter your collection.</p>`;
+    $("#tag-filter-count").textContent = selectedTags.length ? `(${selectedTags.length})` : "";
+    $("#tag-filter-wrap").hidden = authorDirectory;
     $("#count-authors").textContent = authors.length;
     $("#authors-grid").hidden = !authorDirectory;
     $("#authors-grid").innerHTML = authorDirectory ? authors
@@ -139,6 +183,8 @@
         ? `<img src="${safeText(book.cover_url)}" alt="" loading="lazy">`
         : `<div class="cover-placeholder ${gradient}"><span class="cover-initial">${initial}</span><span class="cover-spine"></span></div>`;
       const detailLine = [book.year, book.pages ? `${book.pages} pages` : ""].filter(Boolean).join(" · ");
+      const authorsLabel = getBookAuthors(book).join(", ");
+      const bookTags = getBookTags(book);
       return `<article class="book-card">
         <button class="book-cover" type="button" data-edit="${safeText(book.id)}" aria-label="Edit ${safeText(book.title)}">
           ${image}<span class="status-badge status-${safeText(book.status || "want")}">${safeText(STATUS[book.status] || STATUS.want)}</span>
@@ -146,8 +192,9 @@
         </button>
         <div class="book-card-body">
           <h3 title="${safeText(book.title)}">${safeText(book.title)}</h3>
-          <p class="book-author">${safeText(book.author)}</p>
+          <p class="book-author" title="${safeText(authorsLabel)}">${safeText(authorsLabel)}</p>
           ${detailLine ? `<p class="book-meta">${safeText(detailLine)}</p>` : `<p class="book-meta muted-meta">Add book details ↗</p>`}
+          ${bookTags.length ? `<div class="book-tags">${bookTags.map(tag => `<button class="tag-chip" type="button" data-tag="${safeText(tag)}" title="Filter by ${safeText(tag)}">${safeText(tag)}</button>`).join("")}</div>` : ""}
           <label class="status-control"><span class="sr-only">Reading status for ${safeText(book.title)}</span>
             <select data-status="${safeText(book.id)}" aria-label="Reading status for ${safeText(book.title)}">
               ${Object.entries(STATUS).map(([key, label]) => `<option value="${key}" ${book.status === key ? "selected" : ""}>${safeText(label)}</option>`).join("")}
@@ -179,7 +226,7 @@
     $("#empty-copy").textContent = authorDirectory
       ? (authors.length && searchTerm ? "Try another search to find an author." : "Authors will appear here as you add books to your library.")
       : count > 0
-        ? "Try another search or choose a different shelf."
+        ? "Try another search, change the tag filters, or choose a different shelf."
         : "Start with a title and author. You can fill in the rest whenever you like.";
     $("#empty-add").hidden = authorDirectory || count > 0 || activeFilter !== "all";
     $("#sort-select").closest(".sort-select").hidden = authorDirectory;
@@ -187,7 +234,7 @@
     $("#reading-card").hidden = !currentBook || activeFilter !== "all";
     if (currentBook) {
       $("#reading-title").textContent = currentBook.title;
-      $("#reading-author").textContent = `by ${currentBook.author}`;
+      $("#reading-author").textContent = `by ${getBookAuthors(currentBook).join(", ")}`;
       $("#continue-reading").dataset.edit = currentBook.id;
     }
     document.querySelectorAll("[data-filter]").forEach(button => {
@@ -199,6 +246,7 @@
   function activateFilter(filter) {
     activeFilter = filter;
     selectedAuthor = "";
+    if (filter === "authors") selectedTags = [];
     render();
   }
 
@@ -208,6 +256,44 @@
     searchTerm = "";
     $("#search-input").value = "";
     render();
+  }
+
+  function renderSelectedChips(container, values, kind) {
+    container.innerHTML = values.map((value, index) =>
+      `<span class="selected-chip">${safeText(value)}<button type="button" data-remove-${kind}="${index}" aria-label="Remove ${safeText(value)}">×</button></span>`
+    ).join("");
+  }
+
+  function addDraftValue(kind) {
+    const isAuthor = kind === "author";
+    const input = isAuthor ? $("#author-input") : $("#tag-input");
+    const values = isAuthor ? draftAuthors : draftTags;
+    const value = input.value.trim();
+    if (!value) {
+      input.focus();
+      return;
+    }
+    if (!values.some(existing => existing.toLocaleLowerCase() === value.toLocaleLowerCase())) {
+      values.push(value);
+      renderSelectedChips(isAuthor ? $("#selected-authors") : $("#selected-tags"), values, kind);
+    }
+    input.value = "";
+    clearError($("#dialog-error"));
+    input.focus();
+  }
+
+  function setDraftValues(kind, values) {
+    const isAuthor = kind === "author";
+    const unique = uniqueNames(values);
+    if (isAuthor) draftAuthors = unique;
+    else draftTags = unique;
+    renderSelectedChips(isAuthor ? $("#selected-authors") : $("#selected-tags"), unique, kind);
+  }
+
+  function removeDraftValue(kind, index) {
+    const values = kind === "author" ? draftAuthors : draftTags;
+    values.splice(index, 1);
+    setDraftValues(kind, values);
   }
 
   async function loadBooks() {
@@ -258,6 +344,8 @@
     $("#save-label").textContent = "Add to library";
     clearError($("#dialog-error"));
     editingId = null;
+    setDraftValues("author", []);
+    setDraftValues("tag", []);
     coverFile = null;
     if (coverPreviewUrl) URL.revokeObjectURL(coverPreviewUrl);
     coverPreviewUrl = "";
@@ -275,7 +363,8 @@
     resetForm();
     editingId = id;
     bookForm.elements.title.value = book.title || "";
-    bookForm.elements.author.value = book.author || "";
+    setDraftValues("author", getBookAuthors(book));
+    setDraftValues("tag", getBookTags(book));
     bookForm.elements.status.value = book.status || "want";
     bookForm.elements.year.value = book.year || "";
     bookForm.elements.pages.value = book.pages || "";
@@ -326,17 +415,21 @@
     const previous = books.find(book => book.id === editingId);
     try {
       const formData = new FormData(bookForm);
-      const cover = await getCoverPath(coverFile, previous?.cover_path || previous?.cover_data);
+      const authors = uniqueNames(draftAuthors);
+      const tags = uniqueNames(draftTags);
       const record = {
         title: String(formData.get("title")).trim(),
-        author: String(formData.get("author")).trim(),
+        author: authors[0] || "",
+        authors,
+        tags,
         status: formData.get("status") || "want",
         year: formData.get("year") ? Number(formData.get("year")) : null,
         pages: formData.get("pages") ? Number(formData.get("pages")) : null,
         isbn: String(formData.get("isbn") || "").trim() || null,
         notes: String(formData.get("notes") || "").trim() || null
       };
-      if (!record.title || !record.author) throw new Error("A title and author are required.");
+      if (!record.title || !record.authors.length) throw new Error("A title and at least one author are required.");
+      const cover = await getCoverPath(coverFile, previous?.cover_path || previous?.cover_data);
       if (supabase) {
         const payload = { ...record, cover_path: cover };
         let result;
@@ -482,6 +575,58 @@
     $("#authors-grid").addEventListener("click", event => {
       const authorCard = event.target.closest("[data-author]");
       if (authorCard) showAuthorBooks(authorCard.dataset.author);
+    });
+    $("#book-grid").addEventListener("click", event => {
+      const tagChip = event.target.closest("[data-tag]");
+      if (!tagChip) return;
+      const name = tagChip.dataset.tag;
+      if (!selectedTags.some(tag => tag.toLocaleLowerCase() === name.toLocaleLowerCase())) selectedTags.push(name);
+      activeFilter = "all";
+      selectedAuthor = "";
+      render();
+    });
+    $("#tag-filter-toggle").addEventListener("click", () => {
+      const panel = $("#tag-filter-panel");
+      panel.hidden = !panel.hidden;
+      $("#tag-filter-toggle").setAttribute("aria-expanded", String(!panel.hidden));
+    });
+    $("#tag-filter-options").addEventListener("change", event => {
+      const checkbox = event.target.closest('input[type="checkbox"]');
+      if (!checkbox) return;
+      selectedTags = selectedTags.filter(tag => tag.toLocaleLowerCase() !== checkbox.value.toLocaleLowerCase());
+      if (checkbox.checked) selectedTags.push(checkbox.value);
+      if (activeFilter === "authors") activeFilter = "all";
+      render();
+      $("#tag-filter-panel").hidden = false;
+      $("#tag-filter-toggle").setAttribute("aria-expanded", "true");
+    });
+    $("#clear-tag-filters").addEventListener("click", () => {
+      selectedTags = [];
+      render();
+      $("#tag-filter-panel").hidden = false;
+      $("#tag-filter-toggle").setAttribute("aria-expanded", "true");
+    });
+    $("#add-author").addEventListener("click", () => addDraftValue("author"));
+    $("#add-tag").addEventListener("click", () => addDraftValue("tag"));
+    $("#author-input").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addDraftValue("author");
+      }
+    });
+    $("#tag-input").addEventListener("keydown", event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        addDraftValue("tag");
+      }
+    });
+    $("#selected-authors").addEventListener("click", event => {
+      const remove = event.target.closest("[data-remove-author]");
+      if (remove) removeDraftValue("author", Number(remove.dataset.removeAuthor));
+    });
+    $("#selected-tags").addEventListener("click", event => {
+      const remove = event.target.closest("[data-remove-tag]");
+      if (remove) removeDraftValue("tag", Number(remove.dataset.removeTag));
     });
     $("#search-input").addEventListener("input", event => {
       searchTerm = event.target.value;

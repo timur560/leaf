@@ -78,14 +78,26 @@
 
           <div class="section-toolbar">
             <div><h2 id="section-title">Your collection</h2><span id="results-label" class="results-label">0 books</span></div>
-            <label class="sort-select">Sort by
-              <select id="sort-select" aria-label="Sort books">
-                <option value="recent">Recently added</option>
-                <option value="title">Title A–Z</option>
-                <option value="author">Author A–Z</option>
-                <option value="year">Year</option>
-              </select>
-            </label>
+            <div class="toolbar-controls">
+              <div class="tag-filter-wrap" id="tag-filter-wrap">
+                <button class="secondary-button tag-filter-button" id="tag-filter-toggle" type="button" aria-expanded="false" aria-controls="tag-filter-panel">
+                  Tags <span id="tag-filter-count"></span> <span aria-hidden="true">⌄</span>
+                </button>
+                <div class="tag-filter-panel" id="tag-filter-panel" hidden>
+                  <div class="tag-filter-heading"><strong>Filter by tags</strong><button type="button" id="clear-tag-filters">Clear</button></div>
+                  <div class="tag-filter-options" id="tag-filter-options"></div>
+                  <small>Books must have every selected tag.</small>
+                </div>
+              </div>
+              <label class="sort-select">Sort by
+                <select id="sort-select" aria-label="Sort books">
+                  <option value="recent">Recently added</option>
+                  <option value="title">Title A–Z</option>
+                  <option value="author">Author A–Z</option>
+                  <option value="year">Year</option>
+                </select>
+              </label>
+            </div>
           </div>
 
           <div class="book-grid" id="book-grid" aria-live="polite"></div>
@@ -109,7 +121,11 @@
         </div>
         <div class="quick-fields">
           <label class="field"><span>BOOK TITLE <em>*</em></span><input name="title" required maxlength="180" placeholder="The book's title" autocomplete="off"></label>
-          <label class="field"><span>AUTHOR <em>*</em></span><input name="author" list="author-suggestions" required maxlength="140" placeholder="Who wrote it?" autocomplete="off"><datalist id="author-suggestions"></datalist></label>
+          <div class="field chip-field full-field">
+            <span>AUTHORS <em>*</em></span>
+            <div class="chip-entry"><input id="author-input" list="author-suggestions" maxlength="140" placeholder="Choose or type an author" autocomplete="off" aria-label="Add an author"><datalist id="author-suggestions"></datalist><button class="chip-add" id="add-author" type="button">Add</button></div>
+            <div class="selected-chips" id="selected-authors" aria-live="polite"></div>
+          </div>
         </div>
         <details class="more-details" id="more-details">
           <summary><span class="summary-plus">＋</span> Add more details <span class="optional">OPTIONAL</span></summary>
@@ -119,6 +135,11 @@
             <label class="field"><span>PAGE COUNT</span><input name="pages" type="number" min="1" max="100000" placeholder="e.g. 320"></label>
             <label class="field"><span>ISBN</span><input name="isbn" maxlength="24" placeholder="ISBN-13"></label>
             <label class="field full-field"><span>NOTES</span><textarea name="notes" rows="3" maxlength="2000" placeholder="A thought, a favorite quote, or where you found it..."></textarea></label>
+            <div class="field full-field chip-field">
+              <span>TAGS</span>
+              <div class="chip-entry"><input id="tag-input" list="tag-suggestions" maxlength="40" placeholder="Choose or create a tag" autocomplete="off" aria-label="Add a tag"><datalist id="tag-suggestions"></datalist><button class="chip-add" id="add-tag" type="button">Add</button></div>
+              <div class="selected-chips" id="selected-tags" aria-live="polite"></div>
+            </div>
           </div>
         </details>
         <label class="cover-picker" id="cover-picker">

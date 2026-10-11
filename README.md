@@ -4,8 +4,9 @@ Leaf is a responsive, installable single-page app for keeping a personal book ca
 
 ## What it can do
 
-- Add a book quickly with only its title and author.
-- Reuse authors from a suggestion dropdown, browse all authors, and open an author's books.
+- Add a book quickly with its title and one or more authors.
+- Reuse author suggestions, browse all authors, and open an author's books.
+- Add multiple tags to a book, create or reuse tag suggestions, and filter by one or more tags (a book must have every selected tag).
 - Add a cover photo, reading status, publication year, page count, ISBN, and notes now or later.
 - Search and sort books; filter by reading status.
 - Change a book's status directly from its card, or edit/remove it.
@@ -27,6 +28,8 @@ create table public.books (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   title text not null check (char_length(title) between 1 and 180),
   author text not null check (char_length(author) between 1 and 140),
+  authors text[] not null default '{}',
+  tags text[] not null default '{}',
   status text not null default 'want' check (status in ('want', 'reading', 'read')),
   year integer check (year is null or year between 0 and 2200),
   pages integer check (pages is null or pages between 1 and 100000),
@@ -55,6 +58,20 @@ create policy "Update your own books"
 create policy "Delete your own books"
   on public.books for delete to authenticated
   using ((select auth.uid()) = user_id);
+```
+
+If the `books` table already exists, run this migration once in the Supabase SQL Editor before using the updated app. It keeps the old `author` column for compatibility and copies each existing author into the new array:
+
+```sql
+alter table public.books
+  add column if not exists authors text[] not null default '{}',
+  add column if not exists tags text[] not null default '{}';
+
+update public.books
+set authors = array[author]
+where cardinality(authors) = 0
+  and author is not null
+  and btrim(author) <> '';
 ```
 
 Row Level Security is essential: it ensures that even though the web app's publishable/anon key is visible to visitors, signed-in users can only access rows belonging to their own account. Never put a `service_role` key in this app.

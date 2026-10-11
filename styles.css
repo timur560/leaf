@@ -139,8 +139,21 @@ h1 { margin: 15px 0 9px; font-family: "Playfair Display", Georgia, serif; font-s
 .section-toolbar > div { display: flex; align-items: baseline; gap: 11px; }
 .section-toolbar h2 { margin: 0; font-family: "Playfair Display", Georgia, serif; font-size: 21px; font-weight: 600; letter-spacing: -.3px; }
 .results-label { color: var(--muted); font-size: 9px; }
+.toolbar-controls { display: flex; align-items: center; gap: 13px; }
 .sort-select { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 9px; }
 .sort-select select { padding: 6px 18px 6px 3px; border: 0; background: transparent; color: var(--text); font-size: 9px; font-weight: 600; cursor: pointer; }
+.tag-filter-wrap { position: relative; }
+.tag-filter-button { min-height: 30px; gap: 6px; padding: 0 9px; border: 1px solid var(--line); background: var(--surface-raised); color: var(--text); font-size: 9px; }
+.tag-filter-button span:last-child { color: var(--muted); font-size: 12px; }
+.tag-filter-panel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 4; width: 230px; max-height: 280px; padding: 12px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-raised); box-shadow: var(--shadow); }
+.tag-filter-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; font-size: 10px; }
+.tag-filter-heading button { padding: 3px; border: 0; background: transparent; color: var(--green); font-size: 9px; font-weight: 700; cursor: pointer; }
+.tag-filter-options { display: grid; gap: 3px; }
+.tag-filter-option { display: flex; align-items: center; gap: 8px; min-height: 29px; font-size: 10px; cursor: pointer; }
+.tag-filter-option input { accent-color: var(--green); }
+.tag-filter-option small { margin-left: auto; color: var(--muted); font-size: 9px; }
+.tag-filter-panel > small, .no-tags { display: block; margin: 9px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.no-tags { margin: 4px 0; }
 .book-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 25px 21px; }
 .authors-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .author-card {
@@ -177,6 +190,9 @@ h1 { margin: 15px 0 9px; font-family: "Playfair Display", Georgia, serif; font-s
 .book-card h3 { overflow: hidden; margin: 0 0 4px; font-family: "Playfair Display", Georgia, serif; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .book-author { overflow: hidden; margin: 0; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .book-meta { overflow: hidden; min-height: 12px; margin: 7px 0 8px; color: var(--soft); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+.book-tags { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 7px; }
+.tag-chip { max-width: 100%; padding: 4px 6px; overflow: hidden; border: 0; border-radius: 20px; background: var(--green-pale); color: var(--green); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.tag-chip:hover { filter: brightness(.96); }
 .muted-meta { opacity: .8; }
 .status-control { position: relative; display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-size: 9px; font-weight: 600; }
 .status-control select { max-width: 136px; padding: 4px 14px 4px 0; appearance: none; border: 0; background: transparent; color: inherit; font-size: 9px; font-weight: 600; cursor: pointer; }
@@ -200,11 +216,21 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
 .close-dialog { width: 29px; height: 29px; border: 0; background: transparent; font-size: 24px; }
 .quick-fields, .detail-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .field { display: grid; gap: 7px; min-width: 0; }
+.chip-field { align-content: start; }
 .field > span { font-size: 8px; letter-spacing: 1.1px; }
 .field em { color: #bd755a; font-style: normal; }
 .field input, .field select, .field textarea { width: 100%; min-height: 39px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--field); color: var(--text); font-size: 11px; }
 .field input::placeholder, .field textarea::placeholder { color: var(--soft); }
 .field textarea { resize: vertical; }
+.chip-entry { display: flex; align-items: center; gap: 7px; }
+.chip-entry input { flex: 1; min-width: 0; min-height: 39px; padding: 10px 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--field); color: var(--text); font-size: 11px; }
+.chip-entry input::placeholder { color: var(--soft); }
+.chip-add { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--green); font-size: 10px; font-weight: 700; cursor: pointer; }
+.chip-add:hover { background: var(--green-pale); }
+.selected-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.selected-chip { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 5px 4px 8px; border-radius: 20px; background: var(--green-pale); color: var(--green); font-size: 9px; overflow-wrap: anywhere; }
+.selected-chip button { display: grid; flex: 0 0 17px; place-items: center; width: 17px; height: 17px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: inherit; font-size: 14px; line-height: 1; cursor: pointer; }
+.selected-chip button:hover { background: color-mix(in srgb, var(--green) 12%, transparent); }
 .more-details { margin-top: 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .more-details summary { display: flex; align-items: center; gap: 8px; padding: 13px 0; list-style: none; color: var(--green); font-size: 10px; font-weight: 700; cursor: pointer; }
 .more-details summary::-webkit-details-marker { display: none; }
@@ -264,6 +290,8 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
   .stat strong { font-size: 24px; }
   .reading-card { margin-bottom: 28px; padding: 13px; }
   .section-toolbar h2 { font-size: 19px; }
+  .toolbar-controls { gap: 5px; }
+  .tag-filter-button { min-height: 28px; gap: 4px; padding-inline: 7px; font-size: 8px; }
   .book-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 21px 13px; }
   .authors-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
   .author-card { gap: 8px; min-height: 67px; padding: 9px; }
@@ -287,6 +315,10 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
   .search-box > span { font-size: 19px; }
   .add-button { gap: 4px; padding-inline: 8px; font-size: 8px; }
   .authors-top-button { padding-inline: 7px; font-size: 8px; }
+  .section-toolbar { align-items: center; }
+  .sort-select { gap: 2px; font-size: 8px; }
+  .sort-select select { max-width: 105px; padding-right: 12px; font-size: 8px; }
+  .tag-filter-panel { right: -108px; }
   .library-content { padding-inline: 15px; }
   .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 16px; }
   .book-card h3 { font-size: 13px; }
