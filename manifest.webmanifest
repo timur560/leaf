@@ -1,0 +1,13 @@
+{
+  "name": "Leaf — Your Home Library",
+  "short_name": "Leaf Library",
+  "description": "A calm, personal catalog for your home library.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f3ee",
+  "theme_color": "#f5f3ee",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

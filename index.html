@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#f5f3ee">
+    <meta name="description" content="A calm, personal catalog for your home library.">
+    <title>Leaf — your home library</title>
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="icon" href="./icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="./styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="./config.js"></script>
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" aria-label="Leaf home">
+          <span class="brand-mark" aria-hidden="true">l.</span>
+          <span>leaf<span class="brand-period">.</span></span>
+        </a>
+        <div class="shelf-label">YOUR LIBRARY</div>
+        <nav class="shelf-nav" aria-label="Library filters">
+          <button class="nav-item active" data-filter="all"><span class="nav-icon">▦</span> All books <span class="nav-count" id="count-all">0</span></button>
+          <button class="nav-item" data-filter="reading"><span class="nav-icon">◷</span> Currently reading <span class="nav-count" id="count-reading">0</span></button>
+          <button class="nav-item" data-filter="read"><span class="nav-icon">✓</span> Finished <span class="nav-count" id="count-read">0</span></button>
+          <button class="nav-item" data-filter="want"><span class="nav-icon">♡</span> Want to read <span class="nav-count" id="count-want">0</span></button>
+        </nav>
+        <div class="sidebar-bottom">
+          <div class="quote-mark">“</div>
+          <p>A room without books is like a body without a soul.</p>
+          <span>— CICERO</span>
+          <button class="account-button" id="account-button" type="button">
+            <span class="avatar" id="avatar">G</span>
+            <span class="account-copy"><strong id="account-name">My library</strong><small id="account-mode">Private collection</small></span>
+            <span class="account-menu">···</span>
+          </button>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="mobile-brand"><span class="brand-mark">l.</span> leaf<span class="brand-period">.</span></div>
+          <div class="breadcrumb"><span>MY LIBRARY</span><span class="crumb-slash">/</span><strong id="view-title">All books</strong></div>
+          <div class="top-actions">
+            <label class="search-box">
+              <span aria-hidden="true">⌕</span>
+              <input id="search-input" type="search" placeholder="Search books..." autocomplete="off" aria-label="Search books">
+              <kbd>⌘ K</kbd>
+            </label>
+            <button class="icon-button theme-button" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">☼</button>
+            <button class="primary-button add-button" id="add-book" type="button"><span>＋</span> Add a book</button>
+          </div>
+        </header>
+
+        <section class="library-content">
+          <div class="welcome-row">
+            <div>
+              <div class="eyebrow" id="today-label">YOUR PERSONAL LIBRARY</div>
+              <h1 id="greeting">A little space<br>for big stories<span class="heading-dot">.</span></h1>
+              <p class="welcome-copy">Every book has a story. Keep yours together.</p>
+            </div>
+            <div class="library-stats" aria-label="Library statistics">
+              <div class="stat"><strong id="stat-total">0</strong><span>BOOKS IN LIBRARY</span></div>
+              <div class="stat-divider"></div>
+              <div class="stat"><strong id="stat-read">0</strong><span>BOOKS FINISHED</span></div>
+            </div>
+          </div>
+
+          <div class="reading-card" id="reading-card" hidden>
+            <div class="reading-accent"></div>
+            <div class="reading-info"><span class="eyebrow">PICKING UP WHERE YOU LEFT OFF</span><strong id="reading-title"></strong><span id="reading-author"></span></div>
+            <button class="text-button" id="continue-reading" type="button">View book <span>↗</span></button>
+          </div>
+
+          <div class="section-toolbar">
+            <div><h2 id="section-title">Your collection</h2><span id="results-label" class="results-label">0 books</span></div>
+            <label class="sort-select">Sort by
+              <select id="sort-select" aria-label="Sort books">
+                <option value="recent">Recently added</option>
+                <option value="title">Title A–Z</option>
+                <option value="author">Author A–Z</option>
+                <option value="year">Year</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="book-grid" id="book-grid" aria-live="polite"></div>
+          <div class="empty-state" id="empty-state" hidden>
+            <div class="empty-art" aria-hidden="true"><span>✳</span><i></i><b></b></div>
+            <h3 id="empty-title">Your shelves are waiting.</h3>
+            <p id="empty-copy">Start with a title and author. You can fill in the rest whenever you like.</p>
+            <button class="primary-button" id="empty-add" type="button">＋ Add your first book</button>
+          </div>
+          <footer class="page-footer"><span>MADE FOR YOUR LITTLE CORNER OF THE WORLD</span><span id="sync-status">SAVED ON THIS DEVICE</span></footer>
+        </section>
+      </main>
+    </div>
+
+    <dialog class="book-dialog" id="book-dialog">
+      <form id="book-form">
+        <div class="dialog-heading">
+          <div><span class="eyebrow" id="form-eyebrow">A NEW ADDITION</span><h2 id="form-title">Add a book<span class="heading-dot">.</span></h2></div>
+          <button class="icon-button close-dialog" type="button" data-close aria-label="Close">×</button>
+        </div>
+        <div class="quick-fields">
+          <label class="field"><span>BOOK TITLE <em>*</em></span><input name="title" required maxlength="180" placeholder="The book's title" autocomplete="off"></label>
+          <label class="field"><span>AUTHOR <em>*</em></span><input name="author" required maxlength="140" placeholder="Who wrote it?" autocomplete="off"></label>
+        </div>
+        <details class="more-details" id="more-details">
+          <summary><span class="summary-plus">＋</span> Add more details <span class="optional">OPTIONAL</span></summary>
+          <div class="detail-fields">
+            <label class="field"><span>READING STATUS</span><select name="status"><option value="want">Want to read</option><option value="reading">Currently reading</option><option value="read">Finished</option></select></label>
+            <label class="field"><span>YEAR PUBLISHED</span><input name="year" type="number" min="0" max="2200" placeholder="e.g. 2020"></label>
+            <label class="field"><span>PAGE COUNT</span><input name="pages" type="number" min="1" max="100000" placeholder="e.g. 320"></label>
+            <label class="field"><span>ISBN</span><input name="isbn" maxlength="24" placeholder="ISBN-13"></label>
+            <label class="field full-field"><span>NOTES</span><textarea name="notes" rows="3" maxlength="2000" placeholder="A thought, a favorite quote, or where you found it..."></textarea></label>
+          </div>
+        </details>
+        <label class="cover-picker" id="cover-picker">
+          <input type="file" id="cover-input" accept="image/*" hidden>
+          <span class="cover-preview" id="cover-preview">▧</span>
+          <span><strong id="cover-label">Add a cover photo</strong><small>Choose an image from your device</small></span>
+          <span class="cover-action">BROWSE</span>
+        </label>
+        <div class="dialog-error" id="dialog-error" role="alert" hidden></div>
+        <div class="dialog-actions">
+          <button class="delete-button" id="delete-book" type="button" hidden>Remove book</button>
+          <span class="action-spacer"></span>
+          <button class="secondary-button" type="button" data-close>Cancel</button>
+          <button class="primary-button save-button" type="submit"><span id="save-label">Add to library</span><span aria-hidden="true">↗</span></button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="auth-dialog" id="auth-dialog">
+      <form id="auth-form">
+        <div class="dialog-heading">
+          <div><span class="eyebrow">JUST FOR YOU</span><h2>Your private library<span class="heading-dot">.</span></h2></div>
+          <button class="icon-button close-dialog" type="button" data-close aria-label="Close">×</button>
+        </div>
+        <p class="auth-intro">Sign in to access your library. Your books are private to your account.</p>
+        <label class="field"><span>EMAIL ADDRESS</span><input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
+        <label class="field"><span>PASSWORD</span><input name="password" type="password" autocomplete="current-password" required minlength="6" placeholder="Your password"></label>
+        <div class="dialog-error" id="auth-error" role="alert" hidden></div>
+        <div class="dialog-actions"><button class="secondary-button" id="sign-out" type="button" hidden>Sign out</button><span class="action-spacer"></span><button class="primary-button save-button" type="submit">Sign in <span>↗</span></button></div>
+        <p class="auth-footnote">Account creation is managed by your Supabase project owner.</p>
+      </form>
+    </dialog>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
