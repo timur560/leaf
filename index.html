@@ -89,6 +89,14 @@
                   <small>Books must have every selected tag.</small>
                 </div>
               </div>
+              <label class="view-select">View
+                <select id="view-select" aria-label="Book view">
+                  <option value="small">Small tiles</option>
+                  <option value="large">Large tiles</option>
+                  <option value="table">Table</option>
+                  <option value="list">List</option>
+                </select>
+              </label>
               <label class="sort-select">Sort by
                 <select id="sort-select" aria-label="Sort books">
                   <option value="recent">Recently added</option>
@@ -100,6 +108,10 @@
             </div>
           </div>
 
+          <div class="loading-state" id="loading-state" role="status" aria-live="polite" hidden>
+            <span class="loading-spinner" aria-hidden="true"></span>
+            <span>Loading your books…</span>
+          </div>
           <div class="book-grid" id="book-grid" aria-live="polite"></div>
           <div class="authors-grid" id="authors-grid" aria-live="polite" hidden></div>
           <div class="empty-state" id="empty-state" hidden>

@@ -1,6 +1,2 @@
-// Add your Supabase project URL and anon/publishable key here.
-// Never put a service_role key in a browser app.
-window.LEAF_CONFIG = {
-  supabaseUrl: "https://hjmqeugbdktfsszhfwcx.supabase.co",
-  supabaseAnonKey: "sb_publishable_LA2Hw3j4aNjWIa0gMcooiw_YxOUu8YW"
-};
+// Supabase disabled for local E2E testing. Restore your project URL and anon key in production.
+window.LEAF_CONFIG = {};

@@ -1,4 +1,4 @@
-const CACHE_NAME = "leaf-library-v1";
+const CACHE_NAME = "leaf-library-v2";
 const APP_FILES = ["./", "./index.html", "./styles.css", "./app.js", "./config.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", event => {

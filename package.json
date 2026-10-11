@@ -1,0 +1,24 @@
+{
+  "name": "book-catalog",
+  "version": "1.0.0",
+  "description": "Leaf is a responsive, installable single-page app for keeping a personal book catalog. It uses plain HTML, CSS, and JavaScript and can be hosted as a static site on GitHub Pages.",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/timur560/leaf.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/timur560/leaf/issues"
+  },
+  "homepage": "https://github.com/timur560/leaf#readme",
+  "devDependencies": {
+    "puppeteer": "^25.13.0"
+  }
+}

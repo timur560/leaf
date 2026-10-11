@@ -9,6 +9,8 @@ Leaf is a responsive, installable single-page app for keeping a personal book ca
 - Add multiple tags to a book, create or reuse tag suggestions, and filter by one or more tags (a book must have every selected tag).
 - Add a cover photo, reading status, publication year, page count, ISBN, and notes now or later.
 - Search and sort books; filter by reading status.
+- Switch the collection between small tiles, large tiles, a table, and a list; the selected view is remembered on this device.
+- See a loading indicator while the collection is being fetched.
 - Change a book's status directly from its card, or edit/remove it.
 - Switch between light and dark themes.
 - Install it as a PWA on supported desktop and mobile browsers.

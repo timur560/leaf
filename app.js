@@ -8,6 +8,8 @@
   };
   const STORAGE_KEY = "leaf-library-books-v1";
   const THEME_KEY = "leaf-library-theme";
+  const VIEW_KEY = "leaf-library-view";
+  const BOOK_VIEWS = ["small", "large", "table", "list"];
   const config = window.LEAF_CONFIG || {};
   const remoteEnabled = Boolean(config.supabaseUrl && config.supabaseAnonKey);
   const supabase = remoteEnabled && window.supabase
@@ -33,6 +35,10 @@
   let coverPreviewUrl = "";
   let currentUser = null;
   let toastTimer;
+  let isLoading = false;
+  let bookView = BOOK_VIEWS.includes(localStorage.getItem(VIEW_KEY))
+    ? localStorage.getItem(VIEW_KEY)
+    : "small";
 
   const localStore = {
     async load() {
@@ -147,6 +153,20 @@
     });
   }
 
+  function renderStatusControl(book) {
+    return `<label class="status-control"><span class="sr-only">Reading status for ${safeText(book.title)}</span>
+      <select data-status="${safeText(book.id)}" aria-label="Reading status for ${safeText(book.title)}">
+        ${Object.entries(STATUS).map(([key, label]) => `<option value="${key}" ${book.status === key ? "selected" : ""}>${safeText(label)}</option>`).join("")}
+      </select><span aria-hidden="true">⌄</span>
+    </label>`;
+  }
+
+  function renderBookTags(tags) {
+    return tags.length
+      ? `<div class="book-tags">${tags.map(tag => `<button class="tag-chip" type="button" data-tag="${safeText(tag)}" title="Filter by ${safeText(tag)}">${safeText(tag)}</button>`).join("")}</div>`
+      : "";
+  }
+
   function render() {
     const filtered = getFilteredBooks();
     const authors = getAuthors();
@@ -162,9 +182,12 @@
       return `<label class="tag-filter-option"><input type="checkbox" value="${safeText(tag.name)}" ${checked ? "checked" : ""}><span>${safeText(tag.name)}</span><small>${tag.count}</small></label>`;
     }).join("") : `<p class="no-tags">Add tags to books to filter your collection.</p>`;
     $("#tag-filter-count").textContent = selectedTags.length ? `(${selectedTags.length})` : "";
+    $("#view-select").value = bookView;
+    $("#view-select").closest(".view-select").hidden = authorDirectory;
     $("#tag-filter-wrap").hidden = authorDirectory;
     $("#count-authors").textContent = authors.length;
-    $("#authors-grid").hidden = !authorDirectory;
+    $("#loading-state").hidden = !isLoading;
+    $("#authors-grid").hidden = isLoading || !authorDirectory;
     $("#authors-grid").innerHTML = authorDirectory ? authors
       .filter(author => !searchTerm.trim() || author.name.toLocaleLowerCase().includes(searchTerm.trim().toLocaleLowerCase()))
       .map(author => `<button class="author-card" type="button" data-author="${safeText(author.name)}">
@@ -175,8 +198,9 @@
     const visibleAuthors = authorDirectory
       ? authors.filter(author => !searchTerm.trim() || author.name.toLocaleLowerCase().includes(searchTerm.trim().toLocaleLowerCase()))
       : [];
-    $("#book-grid").hidden = authorDirectory || filtered.length === 0;
-    grid.innerHTML = filtered.map(book => {
+    grid.dataset.view = bookView;
+    grid.hidden = isLoading || authorDirectory || filtered.length === 0;
+    const bookMarkup = filtered.map(book => {
       const initial = safeText((book.title || "?").trim().charAt(0).toLocaleUpperCase());
       const gradient = ["sage", "rose", "ochre", "blue"][Array.from(book.title || "").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4];
       const image = book.cover_url
@@ -185,24 +209,49 @@
       const detailLine = [book.year, book.pages ? `${book.pages} pages` : ""].filter(Boolean).join(" · ");
       const authorsLabel = getBookAuthors(book).join(", ");
       const bookTags = getBookTags(book);
+      const cover = `<button class="book-cover" type="button" data-edit="${safeText(book.id)}" aria-label="Edit ${safeText(book.title)}">
+        ${image}<span class="status-badge status-${safeText(book.status || "want")}">${safeText(STATUS[book.status] || STATUS.want)}</span>
+        <span class="cover-edit" aria-hidden="true">↗</span>
+      </button>`;
+      if (bookView === "table") {
+        return `<tr>
+          <td><button class="table-book-title" type="button" data-edit="${safeText(book.id)}">${safeText(book.title)}</button></td>
+          <td>${safeText(authorsLabel)}</td>
+          <td>${safeText(book.year || "—")}</td>
+          <td>${safeText(book.pages || "—")}</td>
+          <td>${renderBookTags(bookTags)}</td>
+          <td>${renderStatusControl(book)}</td>
+        </tr>`;
+      }
+      if (bookView === "list") {
+        return `<article class="book-card list-book-card">
+          ${cover}
+          <div class="book-card-body">
+            <h3 title="${safeText(book.title)}">${safeText(book.title)}</h3>
+            <p class="book-author" title="${safeText(authorsLabel)}">${safeText(authorsLabel)}</p>
+            <p class="book-meta${detailLine ? "" : " muted-meta"}">${safeText(detailLine || "Add book details ↗")}</p>
+            ${renderBookTags(bookTags)}
+          </div>
+          <div class="list-book-status">${renderStatusControl(book)}</div>
+        </article>`;
+      }
       return `<article class="book-card">
-        <button class="book-cover" type="button" data-edit="${safeText(book.id)}" aria-label="Edit ${safeText(book.title)}">
-          ${image}<span class="status-badge status-${safeText(book.status || "want")}">${safeText(STATUS[book.status] || STATUS.want)}</span>
-          <span class="cover-edit" aria-hidden="true">↗</span>
-        </button>
+        ${cover}
         <div class="book-card-body">
           <h3 title="${safeText(book.title)}">${safeText(book.title)}</h3>
           <p class="book-author" title="${safeText(authorsLabel)}">${safeText(authorsLabel)}</p>
           ${detailLine ? `<p class="book-meta">${safeText(detailLine)}</p>` : `<p class="book-meta muted-meta">Add book details ↗</p>`}
-          ${bookTags.length ? `<div class="book-tags">${bookTags.map(tag => `<button class="tag-chip" type="button" data-tag="${safeText(tag)}" title="Filter by ${safeText(tag)}">${safeText(tag)}</button>`).join("")}</div>` : ""}
-          <label class="status-control"><span class="sr-only">Reading status for ${safeText(book.title)}</span>
-            <select data-status="${safeText(book.id)}" aria-label="Reading status for ${safeText(book.title)}">
-              ${Object.entries(STATUS).map(([key, label]) => `<option value="${key}" ${book.status === key ? "selected" : ""}>${safeText(label)}</option>`).join("")}
-            </select><span aria-hidden="true">⌄</span>
-          </label>
+          ${renderBookTags(bookTags)}
+          ${renderStatusControl(book)}
         </div>
       </article>`;
     }).join("");
+    grid.innerHTML = bookView === "table"
+      ? `<div class="book-table-wrap"><table class="book-table">
+          <thead><tr><th scope="col">Title</th><th scope="col">Authors</th><th scope="col">Year</th><th scope="col">Pages</th><th scope="col">Tags</th><th scope="col">Status</th></tr></thead>
+          <tbody>${bookMarkup}</tbody>
+        </table></div>`
+      : bookMarkup;
 
     const count = books.length;
     $("#count-all").textContent = count;
@@ -219,7 +268,7 @@
     $("#view-title").textContent = authorDirectory ? "Authors" : authorBooks ? selectedAuthor :
       activeFilter === "all" ? "All books" : STATUS[activeFilter];
     const noMatch = authorDirectory ? visibleAuthors.length === 0 : filtered.length === 0;
-    $("#empty-state").hidden = !noMatch;
+    $("#empty-state").hidden = isLoading || !noMatch;
     $("#empty-title").textContent = authorDirectory
       ? (authors.length && searchTerm ? "No authors found." : "No authors yet.")
       : count > 0 ? "No books found." : "Your shelves are waiting.";
@@ -297,27 +346,32 @@
   }
 
   async function loadBooks() {
-    if (!supabase) {
-      books = await localStore.load();
-      $("#sync-status").textContent = "SAVED ON THIS DEVICE";
-      $("#account-mode").textContent = "This device only";
-      render();
-      return;
-    }
-    const { data, error } = await supabase.from("books").select("*").order("created_at", { ascending: false });
-    if (error) throw error;
-    books = await Promise.all((data || []).map(async book => {
-      if (!book.cover_path) return book;
-      const { data: signed, error: signedError } = await supabase.storage.from("book-covers")
-        .createSignedUrl(book.cover_path, 3600);
-      if (signedError) {
-        notify(`Could not load cover for “${book.title}”: ${signedError.message}`);
-        return book;
-      }
-      return { ...book, cover_url: signed.signedUrl };
-    }));
-    $("#sync-status").textContent = "SYNCED WITH SUPABASE";
+    isLoading = true;
     render();
+    try {
+      if (!supabase) {
+        books = await localStore.load();
+        $("#sync-status").textContent = "SAVED ON THIS DEVICE";
+        $("#account-mode").textContent = "This device only";
+        return;
+      }
+      const { data, error } = await supabase.from("books").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      books = await Promise.all((data || []).map(async book => {
+        if (!book.cover_path) return book;
+        const { data: signed, error: signedError } = await supabase.storage.from("book-covers")
+          .createSignedUrl(book.cover_path, 3600);
+        if (signedError) {
+          notify(`Could not load cover for “${book.title}”: ${signedError.message}`);
+          return book;
+        }
+        return { ...book, cover_url: signed.signedUrl };
+      }));
+      $("#sync-status").textContent = "SYNCED WITH SUPABASE";
+    } finally {
+      isLoading = false;
+      render();
+    }
   }
 
   function setUser(user) {
@@ -633,6 +687,13 @@
       render();
     });
     $("#sort-select").addEventListener("change", render);
+    $("#view-select").addEventListener("change", event => {
+      const selectedView = event.currentTarget.value;
+      if (!BOOK_VIEWS.includes(selectedView)) return;
+      bookView = selectedView;
+      localStorage.setItem(VIEW_KEY, bookView);
+      render();
+    });
     document.addEventListener("keydown", event => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
