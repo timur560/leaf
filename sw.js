@@ -1,4 +1,4 @@
-const CACHE_NAME = "leaf-library-v4";
+const CACHE_NAME = "leaf-library-v5";
 const APP_FILES = ["./", "./index.html", "./styles.css", "./app.js", "./config.js", "./manifest.webmanifest", "./icon.svg"];
 const APP_SHELL_FILES = new Set(["", "index.html", "styles.css", "app.js", "config.js"]);
 

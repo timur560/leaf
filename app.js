@@ -7,6 +7,7 @@
     read: "Finished"
   };
   const STORAGE_KEY = "leaf-library-books-v1";
+  const BOOKSHELVES_KEY = "leaf-library-bookshelves-v1";
   const THEME_KEY = "leaf-library-theme";
   const VIEW_KEY = "leaf-library-view";
   const BOOK_VIEWS = ["compact", "small", "large", "table", "list"];
@@ -24,6 +25,7 @@
   const toast = $("#toast");
 
   let books = [];
+  let bookshelves = [];
   let activeFilter = "all";
   let selectedAuthor = "";
   let selectedTags = [];
@@ -35,6 +37,8 @@
   let coverPreviewUrl = "";
   let currentUser = null;
   let toastTimer;
+  let bookTooltipTimer;
+  let bookTooltipPinned = false;
   let isLoading = false;
   let coverObserver = null;
   let coverTransformsSupported = null;
@@ -62,6 +66,17 @@
     },
     async remove(id) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify((await this.load()).filter(item => item.id !== id)));
+    },
+    async loadBookshelves() {
+      try {
+        const value = JSON.parse(localStorage.getItem(BOOKSHELVES_KEY) || "[]");
+        return Array.isArray(value) ? value : [];
+      } catch (error) {
+        throw new Error(`Could not read this device's bookshelves: ${error.message}`);
+      }
+    },
+    async saveBookshelves(shelves) {
+      localStorage.setItem(BOOKSHELVES_KEY, JSON.stringify(shelves));
     }
   };
 
@@ -138,7 +153,7 @@
     const normalizedSearch = searchTerm.trim().toLocaleLowerCase();
     return books.filter(book => {
       const matchesStatus = activeFilter === "all" || activeFilter === "authors" ||
-        activeFilter === "author-books" || book.status === activeFilter;
+        activeFilter === "author-books" || activeFilter === "bookshelves" || book.status === activeFilter;
       const matchesAuthor = activeFilter !== "author-books" ||
         getBookAuthors(book).some(author => author.toLocaleLowerCase() === selectedAuthor.toLocaleLowerCase());
       const bookTags = getBookTags(book).map(tag => tag.toLocaleLowerCase());
@@ -246,11 +261,104 @@
     images.forEach(image => coverObserver.observe(image));
   }
 
+  function renderBookshelfBook(book, index) {
+    const spineColors = ["fern", "terracotta", "ochre", "ink", "moss", "rose"];
+    const height = 112 + Array.from(book.id || book.title).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 36;
+    return `<button class="bookshelf-book spine-${spineColors[index % spineColors.length]}" type="button"
+      draggable="true" data-book-id="${safeText(book.id)}" data-shelf-book
+      style="--spine-height:${height}px" aria-label="${safeText(book.title)} by ${safeText(getBookAuthors(book).join(", "))}">
+      <span class="book-spine-title">${safeText(book.title)}</span>
+    </button>`;
+  }
+
+  function renderBookshelves(filteredBooks) {
+    const shelfView = $("#bookshelves-view");
+    const list = $("#bookshelf-list");
+    list.innerHTML = bookshelves.length ? bookshelves.map(bookshelf => {
+      const shelfCount = Math.max(2, Number(bookshelf.shelf_count) || 2);
+      const shelvesMarkup = Array.from({ length: shelfCount }, (_, index) => {
+        const shelfNumber = index + 1;
+        const shelfBooks = filteredBooks.filter(book =>
+          book.bookshelf_id === bookshelf.id &&
+          Number(book.bookshelf_shelf) === shelfNumber
+        );
+        return `<section class="bookshelf-shelf">
+          <div class="shelf-label-row"><span>SHELF ${shelfNumber}</span><span>${shelfBooks.length} ${shelfBooks.length === 1 ? "book" : "books"}</span></div>
+          <div class="shelf-drop-zone" data-drop-kind="shelf" data-bookshelf-id="${safeText(bookshelf.id)}" data-shelf-number="${shelfNumber}" aria-label="Drop books on ${safeText(bookshelf.name)}, shelf ${shelfNumber}">
+            <div class="shelf-books">${shelfBooks.map(renderBookshelfBook).join("")}</div>
+            ${shelfBooks.length ? "" : `<span class="shelf-empty-hint">Drop a book here</span>`}
+            <div class="shelf-board" aria-hidden="true"></div>
+          </div>
+        </section>`;
+      }).join("");
+      return `<article class="bookshelf-case">
+        <header class="bookshelf-case-heading">
+          <div><span class="bookshelf-case-mark" aria-hidden="true">▤</span><div><h3>${safeText(bookshelf.name)}</h3><small>${shelfCount} ${shelfCount === 1 ? "shelf" : "shelves"}</small></div></div>
+          <div class="bookshelf-case-actions">
+            <button class="secondary-button add-shelf-button" type="button" data-add-shelf="${safeText(bookshelf.id)}">＋ Add shelf</button>
+            <button class="bookshelf-delete" type="button" data-delete-bookshelf="${safeText(bookshelf.id)}" aria-label="Delete ${safeText(bookshelf.name)}">×</button>
+          </div>
+        </header>
+        <div class="bookshelf-frame">${shelvesMarkup}</div>
+      </article>`;
+    }).join("") : `<div class="bookshelves-empty"><span aria-hidden="true">▤</span><h3>Your shelves are ready to be built.</h3><p>Create a bookshelf to give your books a home. Every bookcase starts with two shelves.</p></div>`;
+
+    const unassigned = filteredBooks.filter(book => {
+      const bookshelf = bookshelves.find(item => item.id === book.bookshelf_id);
+      return !bookshelf || !Number.isInteger(Number(book.bookshelf_shelf)) ||
+        Number(book.bookshelf_shelf) < 1 ||
+        Number(book.bookshelf_shelf) > Math.max(2, Number(bookshelf.shelf_count) || 2);
+    });
+    $("#floor-count").textContent = unassigned.length;
+    $("#floor-books").innerHTML = unassigned.map(renderBookshelfBook).join("");
+    $("#book-floor").classList.toggle("has-floor-books", unassigned.length > 0);
+    shelfView.classList.toggle("has-bookshelves", bookshelves.length > 0);
+  }
+
+  function showBookTooltip(bookElement) {
+    const book = books.find(item => item.id === bookElement.dataset.bookId);
+    if (!book) return;
+    const tooltip = $("#book-tooltip");
+    const authors = getBookAuthors(book).join(", ");
+    const coverMarkup = book.cover_data
+      ? `<img class="book-tooltip-cover" src="${safeText(book.cover_data)}" alt="Cover of ${safeText(book.title)}">`
+      : book.cover_url
+        ? `<img class="book-tooltip-cover" src="${safeText(book.cover_url)}" alt="Cover of ${safeText(book.title)}">`
+        : book.cover_path && supabase
+          ? `<img class="book-tooltip-cover" data-tooltip-cover="${safeText(book.cover_path)}" alt="Cover of ${safeText(book.title)}">`
+          : `<span class="book-tooltip-cover-placeholder" aria-hidden="true">▤</span>`;
+    const shelfOptions = bookshelves.map(bookshelf => {
+      const shelfCount = Math.max(2, Number(bookshelf.shelf_count) || 2);
+      return `<optgroup label="${safeText(bookshelf.name)}">${Array.from({ length: shelfCount }, (_, index) => {
+        const shelfNumber = index + 1;
+        const selected = book.bookshelf_id === bookshelf.id && Number(book.bookshelf_shelf) === shelfNumber;
+        return `<option value="${safeText(bookshelf.id)}:${shelfNumber}" ${selected ? "selected" : ""}>Shelf ${shelfNumber}</option>`;
+      }).join("")}</optgroup>`;
+    }).join("");
+    tooltip.innerHTML = `<div class="book-tooltip-content">${coverMarkup}<div class="book-tooltip-copy"><strong>${safeText(book.title)}</strong><span>${safeText(authors)}</span><label>Move to<select data-tooltip-placement="${safeText(book.id)}"><option value="floor" ${book.bookshelf_id ? "" : "selected"}>Waiting on the floor</option>${shelfOptions}</select></label></div></div>`;
+    tooltip.hidden = false;
+    const rect = bookElement.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const left = Math.max(12, Math.min(rect.left + rect.width / 2 - tooltipRect.width / 2, window.innerWidth - tooltipRect.width - 12));
+    const top = rect.top - tooltipRect.height - 12 > 8 ? rect.top - tooltipRect.height - 12 : rect.bottom + 12;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${Math.min(top, window.innerHeight - tooltipRect.height - 8)}px`;
+    const cover = tooltip.querySelector("[data-tooltip-cover]");
+    if (cover) {
+      getDisplayCoverUrl(cover.dataset.tooltipCover).then(url => {
+        if (cover.isConnected) cover.src = url;
+      }).catch(error => notify(`Could not load cover: ${error.message}`));
+    }
+  }
+
   function render() {
+    bookTooltipPinned = false;
+    $("#book-tooltip").hidden = true;
     const filtered = getFilteredBooks();
     const authors = getAuthors();
     const tags = getTags();
     const authorDirectory = activeFilter === "authors";
+    const bookshelfView = activeFilter === "bookshelves";
     const authorBooks = activeFilter === "author-books";
     $("#author-suggestions").innerHTML = authors
       .map(author => `<option value="${safeText(author.name)}"></option>`).join("");
@@ -262,9 +370,11 @@
     }).join("") : `<p class="no-tags">Add tags to books to filter your collection.</p>`;
     $("#tag-filter-count").textContent = selectedTags.length ? `(${selectedTags.length})` : "";
     $("#view-select").value = bookView;
-    $("#view-select").closest(".view-select").hidden = authorDirectory;
-    $("#tag-filter-wrap").hidden = authorDirectory;
+    $("#view-select").closest(".view-select").hidden = authorDirectory || bookshelfView;
+    $("#sort-select").closest(".sort-select").hidden = authorDirectory || bookshelfView;
+    $("#tag-filter-wrap").hidden = authorDirectory || bookshelfView;
     $("#count-authors").textContent = authors.length;
+    $("#count-bookshelves").textContent = bookshelves.length;
     $("#loading-state").hidden = !isLoading;
     $("#authors-grid").hidden = isLoading || !authorDirectory;
     $("#authors-grid").innerHTML = authorDirectory ? authors
@@ -277,8 +387,10 @@
     const visibleAuthors = authorDirectory
       ? authors.filter(author => !searchTerm.trim() || author.name.toLocaleLowerCase().includes(searchTerm.trim().toLocaleLowerCase()))
       : [];
+    $("#bookshelves-view").hidden = isLoading || !bookshelfView;
+    renderBookshelves(filtered);
     grid.dataset.view = bookView;
-    grid.hidden = isLoading || authorDirectory || filtered.length === 0;
+    grid.hidden = isLoading || authorDirectory || bookshelfView || filtered.length === 0;
     const bookMarkup = filtered.map(book => {
       const initial = safeText((book.title || "?").trim().charAt(0).toLocaleUpperCase());
       const gradient = ["sage", "rose", "ochre", "blue"][Array.from(book.title || "").reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4];
@@ -349,11 +461,11 @@
       ? `${visibleAuthors.length} ${visibleAuthors.length === 1 ? "author" : "authors"}`
       : `${filtered.length} ${filtered.length === 1 ? "book" : "books"}`;
     $("#section-title").textContent = authorDirectory ? "All authors" : authorBooks ? selectedAuthor :
-      activeFilter === "all" ? "Your collection" : STATUS[activeFilter] === "Finished" ? "Finished books" : STATUS[activeFilter];
+      bookshelfView ? "Bookshelves" : activeFilter === "all" ? "Your collection" : STATUS[activeFilter] === "Finished" ? "Finished books" : STATUS[activeFilter];
     $("#view-title").textContent = authorDirectory ? "Authors" : authorBooks ? selectedAuthor :
-      activeFilter === "all" ? "All books" : STATUS[activeFilter];
+      bookshelfView ? "Bookshelves" : activeFilter === "all" ? "All books" : STATUS[activeFilter];
     const noMatch = authorDirectory ? visibleAuthors.length === 0 : filtered.length === 0;
-    $("#empty-state").hidden = isLoading || !noMatch;
+    $("#empty-state").hidden = isLoading || bookshelfView || !noMatch;
     $("#empty-title").textContent = authorDirectory
       ? (authors.length && searchTerm ? "No authors found." : "No authors yet.")
       : count > 0 ? "No books found." : "Your shelves are waiting.";
@@ -435,14 +547,19 @@
     render();
     try {
       if (!supabase) {
-        books = await localStore.load();
+        [books, bookshelves] = await Promise.all([localStore.load(), localStore.loadBookshelves()]);
         $("#sync-status").textContent = "SAVED ON THIS DEVICE";
         $("#account-mode").textContent = "This device only";
         return;
       }
-      const { data, error } = await supabase.from("books").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      books = data || [];
+      const [bookResult, bookshelfResult] = await Promise.all([
+        supabase.from("books").select("*").order("created_at", { ascending: false }),
+        supabase.from("bookshelves").select("*").order("created_at", { ascending: true })
+      ]);
+      if (bookResult.error) throw bookResult.error;
+      if (bookshelfResult.error) throw bookshelfResult.error;
+      books = bookResult.data || [];
+      bookshelves = bookshelfResult.data || [];
       $("#sync-status").textContent = "SYNCED WITH SUPABASE";
     } finally {
       isLoading = false;
@@ -457,10 +574,121 @@
     $("#account-mode").textContent = user ? "Private collection" : "Sign in to your library";
     if (!user) {
       books = [];
+      bookshelves = [];
       coverUrlCache.clear();
       render();
       if (supabase && !authDialog.open) authDialog.showModal();
     } else if (authDialog.open) authDialog.close();
+  }
+
+  async function saveBookshelfPlacement(bookId, bookshelfId, shelfNumber) {
+    const book = books.find(item => item.id === bookId);
+    if (!book) throw new Error("That book is no longer in your library.");
+    if (bookshelfId) {
+      const bookshelf = bookshelves.find(item => item.id === bookshelfId);
+      if (!bookshelf || !Number.isInteger(shelfNumber) ||
+          shelfNumber < 1 || shelfNumber > Math.max(2, Number(bookshelf.shelf_count) || 2)) {
+        throw new Error("Choose a valid shelf for this book.");
+      }
+    } else {
+      shelfNumber = null;
+    }
+
+    const placement = { bookshelf_id: bookshelfId, bookshelf_shelf: shelfNumber };
+    if (supabase) {
+      const { error } = await supabase.from("books").update(placement).eq("id", bookId);
+      if (error) throw error;
+    } else {
+      await localStore.save({ ...book, ...placement });
+    }
+    books = books.map(item => item.id === bookId ? { ...item, ...placement } : item);
+    render();
+  }
+
+  async function createBookshelf(event) {
+    event.preventDefault();
+    const form = $("#bookshelf-form");
+    const submit = form.querySelector('[type="submit"]');
+    const errorElement = $("#bookshelf-error");
+    submit.disabled = true;
+    clearError(errorElement);
+    try {
+      const name = String(new FormData(form).get("name") || "").trim();
+      if (!name) throw new Error("Enter a name for this bookshelf.");
+      if (bookshelves.some(item => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+        throw new Error("A bookshelf with this name already exists.");
+      }
+      let bookshelf = { id: localId(), name, shelf_count: 2, created_at: new Date().toISOString() };
+      if (supabase) {
+        const { data, error } = await supabase.from("bookshelves")
+          .insert({ name, shelf_count: 2 }).select().single();
+        if (error) throw error;
+        bookshelf = data;
+      } else {
+        await localStore.saveBookshelves([...bookshelves, bookshelf]);
+      }
+      bookshelves = [...bookshelves, bookshelf];
+      form.reset();
+      $("#bookshelf-dialog").close();
+      render();
+      notify(`“${name}” bookshelf created with two shelves.`);
+    } catch (error) {
+      showError(errorElement, error);
+    } finally {
+      submit.disabled = false;
+    }
+  }
+
+  async function addBookshelfShelf(bookshelfId) {
+    const bookshelf = bookshelves.find(item => item.id === bookshelfId);
+    if (!bookshelf) return;
+    const updated = { ...bookshelf, shelf_count: Math.max(2, Number(bookshelf.shelf_count) || 2) + 1 };
+    try {
+      if (supabase) {
+        const { error } = await supabase.from("bookshelves").update({ shelf_count: updated.shelf_count })
+          .eq("id", bookshelfId);
+        if (error) throw error;
+      } else {
+        await localStore.saveBookshelves(bookshelves.map(item => item.id === bookshelfId ? updated : item));
+      }
+      bookshelves = bookshelves.map(item => item.id === bookshelfId ? updated : item);
+      render();
+      notify(`Added a shelf to “${bookshelf.name}”.`);
+    } catch (error) {
+      notify(`Could not add shelf: ${error.message}`);
+    }
+  }
+
+  async function deleteBookshelf(bookshelfId) {
+    const bookshelf = bookshelves.find(item => item.id === bookshelfId);
+    if (!bookshelf || !confirm(`Remove “${bookshelf.name}”? Its books will be moved to the floor.`)) return;
+    try {
+      const movedBooks = books.filter(book => book.bookshelf_id === bookshelfId)
+        .map(book => ({ ...book, bookshelf_id: null, bookshelf_shelf: null }));
+      if (supabase) {
+        const { error: updateError } = await supabase.from("books")
+          .update({ bookshelf_id: null, bookshelf_shelf: null }).eq("bookshelf_id", bookshelfId);
+        if (updateError) throw updateError;
+        const { error: deleteError } = await supabase.from("bookshelves").delete().eq("id", bookshelfId);
+        if (deleteError) throw deleteError;
+      } else {
+        for (const book of movedBooks) await localStore.save(book);
+        await localStore.saveBookshelves(bookshelves.filter(item => item.id !== bookshelfId));
+      }
+      books = books.map(book => book.bookshelf_id === bookshelfId
+        ? { ...book, bookshelf_id: null, bookshelf_shelf: null }
+        : book);
+      bookshelves = bookshelves.filter(item => item.id !== bookshelfId);
+      render();
+      notify(`“${bookshelf.name}” removed; its books are now on the floor.`);
+    } catch (error) {
+      try {
+        await loadBooks();
+      } catch (refreshError) {
+        notify(`Could not refresh the library after removal failed: ${refreshError.message}`);
+      }
+      notify(`Could not remove bookshelf: ${error.message}`);
+    }
   }
 
   function resetForm() {
@@ -733,9 +961,116 @@
       activateFilter(button.dataset.filter);
     }));
     $("#authors-button").addEventListener("click", () => activateFilter("authors"));
+    $("#bookshelves-button").addEventListener("click", () => activateFilter("bookshelves"));
     $("#authors-grid").addEventListener("click", event => {
       const authorCard = event.target.closest("[data-author]");
       if (authorCard) showAuthorBooks(authorCard.dataset.author);
+    });
+    $("#add-bookshelf").addEventListener("click", () => {
+      clearError($("#bookshelf-error"));
+      $("#bookshelf-dialog").showModal();
+      $("#bookshelf-form").elements.name.focus();
+    });
+    $("#bookshelf-form").addEventListener("submit", createBookshelf);
+    $("#bookshelf-list").addEventListener("click", event => {
+      const addShelfButton = event.target.closest("[data-add-shelf]");
+      if (addShelfButton) {
+        addBookshelfShelf(addShelfButton.dataset.addShelf);
+        return;
+      }
+      const deleteButton = event.target.closest("[data-delete-bookshelf]");
+      if (deleteButton) deleteBookshelf(deleteButton.dataset.deleteBookshelf);
+    });
+    $("#bookshelves-view").addEventListener("dragstart", event => {
+      const bookElement = event.target.closest("[data-shelf-book]");
+      if (!bookElement || !event.dataTransfer) return;
+      event.dataTransfer.setData("text/plain", bookElement.dataset.bookId);
+      event.dataTransfer.effectAllowed = "move";
+      bookElement.classList.add("is-dragging");
+    });
+    $("#bookshelves-view").addEventListener("dragend", event => {
+      event.target.closest("[data-shelf-book]")?.classList.remove("is-dragging");
+      document.querySelectorAll(".drag-over").forEach(element => element.classList.remove("drag-over"));
+    });
+    $("#bookshelves-view").addEventListener("dragover", event => {
+      const dropZone = event.target.closest("[data-drop-kind]");
+      if (!dropZone) return;
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+      dropZone.classList.add("drag-over");
+    });
+    $("#bookshelves-view").addEventListener("dragleave", event => {
+      const dropZone = event.target.closest("[data-drop-kind]");
+      if (dropZone && !dropZone.contains(event.relatedTarget)) dropZone.classList.remove("drag-over");
+    });
+    $("#bookshelves-view").addEventListener("drop", event => {
+      const dropZone = event.target.closest("[data-drop-kind]");
+      if (!dropZone) return;
+      event.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const bookId = event.dataTransfer?.getData("text/plain");
+      if (!bookId) return;
+      const bookshelfId = dropZone.dataset.dropKind === "shelf" ? dropZone.dataset.bookshelfId : null;
+      const shelfNumber = bookshelfId ? Number(dropZone.dataset.shelfNumber) : null;
+      saveBookshelfPlacement(bookId, bookshelfId, shelfNumber)
+        .then(() => notify(bookshelfId ? "Book moved to shelf." : "Book moved to the floor."))
+        .catch(error => notify(`Could not move book: ${error.message}`));
+    });
+    $("#bookshelves-view").addEventListener("pointerover", event => {
+      const bookElement = event.target.closest("[data-shelf-book]");
+      if (!bookElement || bookElement.contains(event.relatedTarget)) return;
+      if (event.pointerType === "touch") bookTooltipPinned = true;
+      clearTimeout(bookTooltipTimer);
+      showBookTooltip(bookElement);
+    });
+    $("#bookshelves-view").addEventListener("pointerout", event => {
+      const bookElement = event.target.closest("[data-shelf-book]");
+      if (!bookElement || bookElement.contains(event.relatedTarget) || $("#book-tooltip").contains(event.relatedTarget)) return;
+      if (bookTooltipPinned) return;
+      bookTooltipTimer = setTimeout(() => { $("#book-tooltip").hidden = true; }, 180);
+    });
+    $("#bookshelves-view").addEventListener("click", event => {
+      const bookElement = event.target.closest("[data-shelf-book]");
+      if (!bookElement || !matchMedia("(hover: none)").matches) return;
+      bookTooltipPinned = true;
+      clearTimeout(bookTooltipTimer);
+      showBookTooltip(bookElement);
+    });
+    $("#bookshelves-view").addEventListener("focusin", event => {
+      const bookElement = event.target.closest("[data-shelf-book]");
+      if (bookElement) showBookTooltip(bookElement);
+    });
+    $("#bookshelves-view").addEventListener("focusout", event => {
+      if (event.target.closest("[data-shelf-book]") && !$("#book-tooltip").contains(event.relatedTarget)) {
+        bookTooltipTimer = setTimeout(() => { $("#book-tooltip").hidden = true; }, 180);
+      }
+    });
+    $("#book-tooltip").addEventListener("pointerenter", () => clearTimeout(bookTooltipTimer));
+    $("#book-tooltip").addEventListener("pointerleave", event => {
+      if (!bookTooltipPinned && !event.relatedTarget?.closest?.("[data-shelf-book]")) $("#book-tooltip").hidden = true;
+    });
+    document.addEventListener("pointerdown", event => {
+      if ($("#book-tooltip").contains(event.target) || event.target.closest?.("[data-shelf-book]")) return;
+      bookTooltipPinned = false;
+      $("#book-tooltip").hidden = true;
+    });
+    $("#book-tooltip").addEventListener("change", event => {
+      const placement = event.target.closest("[data-tooltip-placement]");
+      if (!placement) return;
+      let bookshelfId = null;
+      let shelfNumber = null;
+      if (placement.value !== "floor") {
+        const separator = placement.value.lastIndexOf(":");
+        bookshelfId = placement.value.slice(0, separator);
+        shelfNumber = Number(placement.value.slice(separator + 1));
+      }
+      saveBookshelfPlacement(placement.dataset.tooltipPlacement, bookshelfId, shelfNumber)
+        .then(() => {
+          bookTooltipPinned = false;
+          $("#book-tooltip").hidden = true;
+          notify(bookshelfId ? "Book moved to shelf." : "Book moved to the floor.");
+        })
+        .catch(error => notify(`Could not move book: ${error.message}`));
     });
     $("#book-grid").addEventListener("click", event => {
       const tagChip = event.target.closest("[data-tag]");
@@ -828,7 +1163,7 @@
       button.closest("dialog").close();
       if (button.closest("#book-dialog")) resetForm();
     }));
-    [bookDialog, authDialog].forEach(dialog => dialog.addEventListener("click", event => {
+    [bookDialog, authDialog, $("#bookshelf-dialog")].forEach(dialog => dialog.addEventListener("click", event => {
       if (event.target === dialog) dialog.close();
     }));
     $("#account-button").addEventListener("click", () => {

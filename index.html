@@ -27,6 +27,7 @@
           <button class="nav-item" data-filter="read"><span class="nav-icon">✓</span> Finished <span class="nav-count" id="count-read">0</span></button>
           <button class="nav-item" data-filter="want"><span class="nav-icon">♡</span> Want to read <span class="nav-count" id="count-want">0</span></button>
           <button class="nav-item" data-filter="authors" id="authors-nav"><span class="nav-icon">♙</span> Authors <span class="nav-count" id="count-authors">0</span></button>
+          <button class="nav-item" data-filter="bookshelves" id="bookshelves-nav"><span class="nav-icon">▤</span> Bookshelves <span class="nav-count" id="count-bookshelves">0</span></button>
         </nav>
         <div class="sidebar-bottom">
           <div class="quote-mark">“</div>
@@ -51,6 +52,7 @@
               <kbd>⌘ K</kbd>
             </label>
             <button class="secondary-button authors-top-button" id="authors-button" type="button">Authors</button>
+            <button class="secondary-button bookshelves-top-button" id="bookshelves-button" type="button">Bookshelves</button>
             <button class="icon-button theme-button" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">☼</button>
             <button class="primary-button add-button" id="add-book" type="button"><span>＋</span> Add a book</button>
           </div>
@@ -115,6 +117,17 @@
           </div>
           <div class="book-grid" id="book-grid" aria-live="polite"></div>
           <div class="authors-grid" id="authors-grid" aria-live="polite" hidden></div>
+          <section class="bookshelves-view" id="bookshelves-view" aria-label="Bookshelves" hidden>
+            <header class="bookshelves-heading">
+              <div><span class="eyebrow">YOUR COLLECTION, ON DISPLAY</span><h2>A place for every story<span class="heading-dot">.</span></h2><p>Drag books onto a shelf, or pick a destination from a book's details.</p></div>
+              <button class="primary-button" id="add-bookshelf" type="button"><span>＋</span> New bookshelf</button>
+            </header>
+            <div class="bookshelf-list" id="bookshelf-list"></div>
+            <section class="book-floor" id="book-floor" data-drop-kind="floor" aria-label="Books without a shelf">
+              <div class="floor-heading"><span class="floor-icon" aria-hidden="true">⌂</span><div><h3>Waiting on the floor</h3><p>Books without a shelf yet</p></div><span class="floor-count" id="floor-count">0</span></div>
+              <div class="floor-books" id="floor-books"></div>
+            </section>
+          </section>
           <div class="empty-state" id="empty-state" hidden>
             <div class="empty-art" aria-hidden="true"><span>✳</span><i></i><b></b></div>
             <h3 id="empty-title">Your shelves are waiting.</h3>
@@ -125,6 +138,21 @@
         </section>
       </main>
     </div>
+
+    <dialog class="bookshelf-dialog" id="bookshelf-dialog">
+      <form id="bookshelf-form">
+        <div class="dialog-heading">
+          <div><span class="eyebrow">MAKE A LITTLE ROOM</span><h2>New bookshelf<span class="heading-dot">.</span></h2></div>
+          <button class="icon-button close-dialog" type="button" data-close aria-label="Close">×</button>
+        </div>
+        <p class="bookshelf-dialog-copy">Give your bookcase a name. It starts with two shelves; you can add more whenever you need them.</p>
+        <label class="field"><span>BOOKSHELF NAME <em>*</em></span><input name="name" required maxlength="80" placeholder="e.g. Living room" autocomplete="off"></label>
+        <div class="dialog-error" id="bookshelf-error" role="alert" hidden></div>
+        <div class="dialog-actions"><span class="action-spacer"></span><button class="secondary-button" type="button" data-close>Cancel</button><button class="primary-button save-button" type="submit">Create bookshelf <span>↗</span></button></div>
+      </form>
+    </dialog>
+
+    <div class="book-tooltip" id="book-tooltip" role="group" aria-label="Book details and shelf placement" hidden></div>
 
     <dialog class="book-dialog" id="book-dialog">
       <form id="book-form">

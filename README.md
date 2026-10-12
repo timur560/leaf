@@ -10,6 +10,7 @@ Leaf is a responsive, installable single-page app for keeping a personal book ca
 - Add a cover photo, reading status, publication year, page count, ISBN, and notes now or later.
 - Search and sort books; filter by reading status.
 - Switch the collection between compact tiles, small tiles, large tiles, a table, and a list; the selected view is remembered on this device.
+- Build named bookshelves with two or more shelves, assign books by drag-and-drop or from a book's popover, and gather unshelved books in a floor pile.
 - See a loading indicator while the collection is being fetched.
 - Change a book's status directly from its card, or edit/remove it.
 - Switch between light and dark themes.
@@ -39,11 +40,31 @@ create table public.books (
   isbn text,
   notes text check (notes is null or char_length(notes) <= 2000),
   cover_path text,
+  bookshelf_id uuid,
+  bookshelf_shelf integer check (bookshelf_shelf is null or bookshelf_shelf >= 1),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
+create table public.bookshelves (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 80),
+  shelf_count integer not null default 2 check (shelf_count >= 2),
+  created_at timestamptz not null default now(),
+  unique (id, user_id),
+  unique (user_id, name)
+);
+
+alter table public.books
+  add constraint books_bookshelf_owner_fk
+    foreign key (bookshelf_id, user_id) references public.bookshelves(id, user_id),
+  add constraint books_bookshelf_placement_check
+    check ((bookshelf_id is null and bookshelf_shelf is null) or
+           (bookshelf_id is not null and bookshelf_shelf is not null and bookshelf_shelf >= 1));
+
 alter table public.books enable row level security;
+alter table public.bookshelves enable row level security;
 
 create policy "Read your own books"
   on public.books for select to authenticated
@@ -61,6 +82,23 @@ create policy "Update your own books"
 create policy "Delete your own books"
   on public.books for delete to authenticated
   using ((select auth.uid()) = user_id);
+
+create policy "Read your own bookshelves"
+  on public.bookshelves for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+create policy "Add bookshelves to your own library"
+  on public.bookshelves for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+
+create policy "Update your own bookshelves"
+  on public.bookshelves for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+create policy "Delete your own bookshelves"
+  on public.bookshelves for delete to authenticated
+  using ((select auth.uid()) = user_id);
 ```
 
 If the `books` table already exists, run this migration once in the Supabase SQL Editor before using the updated app. It keeps the old `author` column for compatibility and copies each existing author into the new array:
@@ -75,6 +113,46 @@ set authors = array[author]
 where cardinality(authors) = 0
   and author is not null
   and btrim(author) <> '';
+
+create table public.bookshelves (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 80),
+  shelf_count integer not null default 2 check (shelf_count >= 2),
+  created_at timestamptz not null default now(),
+  unique (id, user_id),
+  unique (user_id, name)
+);
+
+alter table public.books
+  add column if not exists bookshelf_id uuid,
+  add column if not exists bookshelf_shelf integer;
+
+alter table public.books
+  add constraint books_bookshelf_owner_fk
+    foreign key (bookshelf_id, user_id) references public.bookshelves(id, user_id),
+  add constraint books_bookshelf_placement_check
+    check ((bookshelf_id is null and bookshelf_shelf is null) or
+           (bookshelf_id is not null and bookshelf_shelf is not null and bookshelf_shelf >= 1));
+
+alter table public.bookshelves enable row level security;
+
+create policy "Read your own bookshelves"
+  on public.bookshelves for select to authenticated
+  using ((select auth.uid()) = user_id);
+
+create policy "Add bookshelves to your own library"
+  on public.bookshelves for insert to authenticated
+  with check ((select auth.uid()) = user_id);
+
+create policy "Update your own bookshelves"
+  on public.bookshelves for update to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+
+create policy "Delete your own bookshelves"
+  on public.bookshelves for delete to authenticated
+  using ((select auth.uid()) = user_id);
 ```
 
 Row Level Security is essential: it ensures that even though the web app's publishable/anon key is visible to visitors, signed-in users can only access rows belonging to their own account. Never put a `service_role` key in this app.
