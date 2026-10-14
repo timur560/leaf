@@ -44,6 +44,7 @@
   let coverTransformsSupported = null;
   let coverTransformCheck = null;
   const coverUrlCache = new Map();
+  const canEditLibrary = () => remoteEnabled ? Boolean(supabase && currentUser) : true;
   let bookView = BOOK_VIEWS.includes(localStorage.getItem(VIEW_KEY))
     ? localStorage.getItem(VIEW_KEY)
     : "small";
@@ -264,11 +265,13 @@
   function renderBookshelfBook(book, index) {
     const spineColors = ["fern", "terracotta", "ochre", "ink", "moss", "rose"];
     const height = 112 + Array.from(book.id || book.title).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 36;
-    return `<button class="bookshelf-book spine-${spineColors[index % spineColors.length]}" type="button"
-      draggable="true" data-book-id="${safeText(book.id)}" data-shelf-book
+    const tag = canEditLibrary() ? "button" : "div";
+    const buttonAttributes = canEditLibrary() ? 'type="button" draggable="true"' : 'role="group" tabindex="0"';
+    return `<${tag} class="bookshelf-book spine-${spineColors[index % spineColors.length]}" ${buttonAttributes}
+      data-book-id="${safeText(book.id)}" data-shelf-book
       style="--spine-height:${height}px" aria-label="${safeText(book.title)} by ${safeText(getBookAuthors(book).join(", "))}">
       <span class="book-spine-title">${safeText(book.title)}</span>
-    </button>`;
+    </${tag}>`;
   }
 
   function renderBookshelves(filteredBooks) {
@@ -294,10 +297,10 @@
       return `<article class="bookshelf-case">
         <header class="bookshelf-case-heading">
           <div><span class="bookshelf-case-mark" aria-hidden="true">▤</span><div><h3>${safeText(bookshelf.name)}</h3><small>${shelfCount} ${shelfCount === 1 ? "shelf" : "shelves"}</small></div></div>
-          <div class="bookshelf-case-actions">
+          ${canEditLibrary() ? `<div class="bookshelf-case-actions">
             <button class="secondary-button add-shelf-button" type="button" data-add-shelf="${safeText(bookshelf.id)}">＋ Add shelf</button>
             <button class="bookshelf-delete" type="button" data-delete-bookshelf="${safeText(bookshelf.id)}" aria-label="Delete ${safeText(bookshelf.name)}">×</button>
-          </div>
+          </div>` : ""}
         </header>
         <div class="bookshelf-frame">${shelvesMarkup}</div>
       </article>`;
@@ -335,7 +338,10 @@
         return `<option value="${safeText(bookshelf.id)}:${shelfNumber}" ${selected ? "selected" : ""}>Shelf ${shelfNumber}</option>`;
       }).join("")}</optgroup>`;
     }).join("");
-    tooltip.innerHTML = `<div class="book-tooltip-content">${coverMarkup}<div class="book-tooltip-copy"><strong>${safeText(book.title)}</strong><span>${safeText(authors)}</span><label>Move to<select data-tooltip-placement="${safeText(book.id)}"><option value="floor" ${book.bookshelf_id ? "" : "selected"}>Waiting on the floor</option>${shelfOptions}</select></label></div></div>`;
+    const placementMarkup = canEditLibrary()
+      ? `<label>Move to<select data-tooltip-placement="${safeText(book.id)}"><option value="floor" ${book.bookshelf_id ? "" : "selected"}>Waiting on the floor</option>${shelfOptions}</select></label>`
+      : `<button class="book-details-link" type="button" data-view-book="${safeText(book.id)}">View all details</button>`;
+    tooltip.innerHTML = `<div class="book-tooltip-content">${coverMarkup}<div class="book-tooltip-copy"><strong>${safeText(book.title)}</strong><span>${safeText(authors)}</span>${placementMarkup}</div></div>`;
     tooltip.hidden = false;
     const rect = bookElement.getBoundingClientRect();
     const tooltipRect = tooltip.getBoundingClientRect();
@@ -360,6 +366,15 @@
     const authorDirectory = activeFilter === "authors";
     const bookshelfView = activeFilter === "bookshelves";
     const authorBooks = activeFilter === "author-books";
+    const canEdit = canEditLibrary();
+    $("#add-book").hidden = !canEdit;
+    $("#add-bookshelf").hidden = !canEdit;
+    $("#mobile-account-button").hidden = !supabase;
+    $("#mobile-account-button").textContent = currentUser ? "Account" : "Sign in";
+    $("#account-name").textContent = currentUser?.email?.split("@")[0] || (supabase ? "Public library" : "My library");
+    $("#account-mode").textContent = currentUser ? "Owner · can edit" :
+      supabase ? "Read-only · sign in to edit" : "This device only";
+    $("#sign-out").hidden = !currentUser;
     $("#author-suggestions").innerHTML = authors
       .map(author => `<option value="${safeText(author.name)}"></option>`).join("");
     $("#tag-suggestions").innerHTML = tags
@@ -404,18 +419,18 @@
       const detailLine = [book.year, book.pages ? `${book.pages} pages` : ""].filter(Boolean).join(" · ");
       const authorsLabel = getBookAuthors(book).join(", ");
       const bookTags = getBookTags(book);
-      const cover = `<button class="book-cover" type="button" data-edit="${safeText(book.id)}" aria-label="Edit ${safeText(book.title)}">
+      const cover = `<button class="book-cover" type="button" data-view-book="${safeText(book.id)}" aria-label="View details for ${safeText(book.title)}">
         ${image}<span class="status-badge status-${safeText(book.status || "want")}">${safeText(STATUS[book.status] || STATUS.want)}</span>
-        <span class="cover-edit" aria-hidden="true">↗</span>
       </button>`;
+      const statusControl = canEdit ? renderStatusControl(book) : "";
       if (bookView === "table") {
         return `<tr>
-          <td><button class="table-book-title" type="button" data-edit="${safeText(book.id)}">${safeText(book.title)}</button></td>
+          <td><button class="table-book-title" type="button" data-view-book="${safeText(book.id)}">${safeText(book.title)}</button></td>
           <td>${safeText(authorsLabel)}</td>
           <td>${safeText(book.year || "—")}</td>
           <td>${safeText(book.pages || "—")}</td>
           <td>${renderBookTags(bookTags)}</td>
-          <td>${renderStatusControl(book)}</td>
+          <td>${canEdit ? statusControl : safeText(STATUS[book.status] || STATUS.want)}</td>
         </tr>`;
       }
       if (bookView === "list") {
@@ -427,7 +442,7 @@
             <p class="book-meta${detailLine ? "" : " muted-meta"}">${safeText(detailLine || "Add book details ↗")}</p>
             ${renderBookTags(bookTags)}
           </div>
-          <div class="list-book-status">${renderStatusControl(book)}</div>
+          <div class="list-book-status">${statusControl}</div>
         </article>`;
       }
       return `<article class="book-card">
@@ -437,7 +452,7 @@
           <p class="book-author" title="${safeText(authorsLabel)}">${safeText(authorsLabel)}</p>
           ${detailLine ? `<p class="book-meta">${safeText(detailLine)}</p>` : `<p class="book-meta muted-meta">Add book details ↗</p>`}
           ${renderBookTags(bookTags)}
-          ${renderStatusControl(book)}
+          ${statusControl}
         </div>
       </article>`;
     }).join("");
@@ -474,15 +489,16 @@
       : count > 0
         ? "Try another search, change the tag filters, or choose a different shelf."
         : "Start with a title and author. You can fill in the rest whenever you like.";
-    $("#empty-add").hidden = authorDirectory || count > 0 || activeFilter !== "all";
+    $("#empty-add").hidden = !canEdit || authorDirectory || count > 0 || activeFilter !== "all";
     $("#sort-select").closest(".sort-select").hidden = authorDirectory;
     const currentBook = books.find(book => book.status === "reading");
     $("#reading-card").hidden = !currentBook || activeFilter !== "all";
     if (currentBook) {
       $("#reading-title").textContent = currentBook.title;
       $("#reading-author").textContent = `by ${getBookAuthors(currentBook).join(", ")}`;
-      $("#continue-reading").dataset.edit = currentBook.id;
+      $("#continue-reading").dataset.viewBook = currentBook.id;
     }
+    $("#continue-reading").hidden = !canEdit;
     document.querySelectorAll("[data-filter]").forEach(button => {
       button.classList.toggle("active", button.dataset.filter === activeFilter ||
         (activeFilter === "author-books" && button.dataset.filter === "authors"));
@@ -502,6 +518,54 @@
     searchTerm = "";
     $("#search-input").value = "";
     render();
+  }
+
+  function openBookDetails(id) {
+    const book = books.find(item => item.id === id);
+    if (!book) return;
+    const bookshelf = bookshelves.find(item => item.id === book.bookshelf_id);
+    const shelfNumber = Number(book.bookshelf_shelf);
+    const shelfLabel = bookshelf && Number.isInteger(shelfNumber) && shelfNumber > 0
+      ? `${bookshelf.name}, shelf ${shelfNumber}`
+      : "Waiting on the floor";
+    const coverMarkup = book.cover_data || book.cover_url
+      ? `<img class="book-details-cover" src="${safeText(book.cover_data || book.cover_url)}" alt="Cover of ${safeText(book.title)}">`
+      : book.cover_path && supabase
+        ? `<img class="book-details-cover" data-book-detail-cover="${safeText(book.cover_path)}" alt="Cover of ${safeText(book.title)}">`
+        : `<div class="book-details-cover book-details-cover-placeholder" aria-hidden="true">▤</div>`;
+    const details = [
+      ["Authors", getBookAuthors(book).join(", ")],
+    ].filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "");
+    const metadata = [
+      ["Published", book.year],
+      ["Pages", book.pages],
+      ["ISBN", book.isbn]
+    ].filter(([, value]) => value !== null && value !== undefined && String(value).trim() !== "");
+    const tags = getBookTags(book);
+    const editButton = canEditLibrary()
+      ? `<button class="book-details-edit" type="button" data-edit-from-details="${safeText(book.id)}" aria-label="Edit ${safeText(book.title)}" title="Edit book">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
+        </button>`
+      : "";
+    $("#book-details-content").innerHTML = `<div class="book-details-layout">
+      <div class="book-details-art">${coverMarkup}<span class="book-details-status status-${safeText(book.status || "want")}">${safeText(STATUS[book.status] || STATUS.want)}</span></div>
+      <div class="book-details-copy">
+        <div class="book-details-heading"><span class="eyebrow">FROM YOUR LIBRARY</span>${editButton}</div>
+        <h2 id="book-details-title">${safeText(book.title)}</h2>
+        <p class="book-details-authors">${details.map(([, value]) => safeText(value)).join(", ")}</p>
+        ${metadata.length ? `<div class="book-details-metadata">${metadata.map(([label, value]) => `<div><span>${safeText(label)}</span><strong>${safeText(value)}</strong></div>`).join("")}</div>` : ""}
+        ${tags.length ? `<div class="book-details-tags" aria-label="Tags">${tags.map(tag => `<span>${safeText(tag)}</span>`).join("")}</div>` : ""}
+        <div class="book-details-location"><span class="book-details-location-icon" aria-hidden="true">⌂</span><div><small>BOOKSHELF</small><strong>${safeText(shelfLabel)}</strong></div></div>
+        ${book.notes ? `<section class="book-details-notes"><span class="eyebrow">YOUR NOTES</span><p>${safeText(book.notes)}</p></section>` : ""}
+      </div>
+    </div>`;
+    $("#book-details-dialog").showModal();
+    const cover = $("#book-details-content [data-book-detail-cover]");
+    if (cover) {
+      getDisplayCoverUrl(cover.dataset.bookDetailCover).then(url => {
+        if (cover.isConnected) cover.src = url;
+      }).catch(error => notify(`Could not load cover: ${error.message}`));
+    }
   }
 
   function renderSelectedChips(container, values, kind) {
@@ -571,17 +635,16 @@
     currentUser = user;
     $("#account-name").textContent = user?.email?.split("@")[0] || "My library";
     $("#avatar").textContent = (user?.email?.charAt(0) || "G").toLocaleUpperCase();
-    $("#account-mode").textContent = user ? "Private collection" : "Sign in to your library";
+    $("#account-mode").textContent = user ? "Owner · can edit" :
+      supabase ? "Read-only · sign in to edit" : "This device only";
     if (!user) {
-      books = [];
-      bookshelves = [];
       coverUrlCache.clear();
       render();
-      if (supabase && !authDialog.open) authDialog.showModal();
     } else if (authDialog.open) authDialog.close();
   }
 
   async function saveBookshelfPlacement(bookId, bookshelfId, shelfNumber) {
+    if (!canEditLibrary()) throw new Error("Sign in as the library owner to move books.");
     const book = books.find(item => item.id === bookId);
     if (!book) throw new Error("That book is no longer in your library.");
     if (bookshelfId) {
@@ -607,6 +670,10 @@
 
   async function createBookshelf(event) {
     event.preventDefault();
+    if (!canEditLibrary()) {
+      showError($("#bookshelf-error"), new Error("Sign in as the library owner to manage bookshelves."));
+      return;
+    }
     const form = $("#bookshelf-form");
     const submit = form.querySelector('[type="submit"]');
     const errorElement = $("#bookshelf-error");
@@ -640,6 +707,7 @@
   }
 
   async function addBookshelfShelf(bookshelfId) {
+    if (!canEditLibrary()) return;
     const bookshelf = bookshelves.find(item => item.id === bookshelfId);
     if (!bookshelf) return;
     const updated = { ...bookshelf, shelf_count: Math.max(2, Number(bookshelf.shelf_count) || 2) + 1 };
@@ -660,6 +728,7 @@
   }
 
   async function deleteBookshelf(bookshelfId) {
+    if (!canEditLibrary()) return;
     const bookshelf = bookshelves.find(item => item.id === bookshelfId);
     if (!bookshelf || !confirm(`Remove “${bookshelf.name}”? Its books will be moved to the floor.`)) return;
     try {
@@ -711,12 +780,14 @@
   }
 
   function openAddDialog() {
+    if (!canEditLibrary()) return;
     resetForm();
     bookDialog.showModal();
     bookForm.elements.title.focus();
   }
 
   function openEditDialog(id) {
+    if (!canEditLibrary()) return;
     const book = books.find(item => item.id === id);
     if (!book) return;
     resetForm();
@@ -798,6 +869,10 @@
 
   async function saveBook(event) {
     event.preventDefault();
+    if (!canEditLibrary()) {
+      showError($("#dialog-error"), new Error("Sign in as the library owner to edit books."));
+      return;
+    }
     const submit = bookForm.querySelector('[type="submit"]');
     submit.disabled = true;
     clearError($("#dialog-error"));
@@ -854,6 +929,7 @@
   }
 
   async function removeBook() {
+    if (!canEditLibrary()) return;
     if (!editingId) return;
     const book = books.find(item => item.id === editingId);
     if (!book || !confirm(`Remove “${book.title}” from your library?`)) return;
@@ -882,6 +958,7 @@
   }
 
   async function updateStatus(id, status) {
+    if (!canEditLibrary()) return;
     const book = books.find(item => item.id === id);
     if (!book || !STATUS[status]) return;
     const updated = { ...book, status };
@@ -928,6 +1005,7 @@
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setUser(null);
+      await loadBooks();
     } catch (error) {
       showError($("#auth-error"), error);
     }
@@ -949,9 +1027,25 @@
     $("#book-grid").addEventListener("click", event => {
       const edit = event.target.closest("[data-edit]");
       if (edit) openEditDialog(edit.dataset.edit);
+      const card = event.target.closest(".book-card");
+      if (card && !event.target.closest("button, a, input, select, textarea, [data-tag]")) {
+        const cover = card.querySelector("[data-view-book]");
+        if (cover) openBookDetails(cover.dataset.viewBook);
+      }
+    });
+    document.addEventListener("click", event => {
+      const editFromDetails = event.target.closest("[data-edit-from-details]");
+      if (editFromDetails) {
+        const id = editFromDetails.dataset.editFromDetails;
+        $("#book-details-dialog").close();
+        openEditDialog(id);
+        return;
+      }
+      const details = event.target.closest("[data-view-book]");
+      if (details) openBookDetails(details.dataset.viewBook);
     });
     $("#continue-reading").addEventListener("click", event => {
-      if (event.currentTarget.dataset.edit) openEditDialog(event.currentTarget.dataset.edit);
+      if (event.currentTarget.dataset.viewBook) openBookDetails(event.currentTarget.dataset.viewBook);
     });
     $("#book-grid").addEventListener("change", event => {
       const select = event.target.closest("[data-status]");
@@ -982,6 +1076,7 @@
       if (deleteButton) deleteBookshelf(deleteButton.dataset.deleteBookshelf);
     });
     $("#bookshelves-view").addEventListener("dragstart", event => {
+      if (!canEditLibrary()) return;
       const bookElement = event.target.closest("[data-shelf-book]");
       if (!bookElement || !event.dataTransfer) return;
       event.dataTransfer.setData("text/plain", bookElement.dataset.bookId);
@@ -993,6 +1088,7 @@
       document.querySelectorAll(".drag-over").forEach(element => element.classList.remove("drag-over"));
     });
     $("#bookshelves-view").addEventListener("dragover", event => {
+      if (!canEditLibrary()) return;
       const dropZone = event.target.closest("[data-drop-kind]");
       if (!dropZone) return;
       event.preventDefault();
@@ -1004,6 +1100,7 @@
       if (dropZone && !dropZone.contains(event.relatedTarget)) dropZone.classList.remove("drag-over");
     });
     $("#bookshelves-view").addEventListener("drop", event => {
+      if (!canEditLibrary()) return;
       const dropZone = event.target.closest("[data-drop-kind]");
       if (!dropZone) return;
       event.preventDefault();
@@ -1031,10 +1128,11 @@
     });
     $("#bookshelves-view").addEventListener("click", event => {
       const bookElement = event.target.closest("[data-shelf-book]");
-      if (!bookElement || !matchMedia("(hover: none)").matches) return;
-      bookTooltipPinned = true;
+      if (!bookElement) return;
+      bookTooltipPinned = false;
       clearTimeout(bookTooltipTimer);
-      showBookTooltip(bookElement);
+      $("#book-tooltip").hidden = true;
+      openBookDetails(bookElement.dataset.bookId);
     });
     $("#bookshelves-view").addEventListener("focusin", event => {
       const bookElement = event.target.closest("[data-shelf-book]");
@@ -1163,10 +1261,10 @@
       button.closest("dialog").close();
       if (button.closest("#book-dialog")) resetForm();
     }));
-    [bookDialog, authDialog, $("#bookshelf-dialog")].forEach(dialog => dialog.addEventListener("click", event => {
+    [bookDialog, authDialog, $("#bookshelf-dialog"), $("#book-details-dialog")].forEach(dialog => dialog.addEventListener("click", event => {
       if (event.target === dialog) dialog.close();
     }));
-    $("#account-button").addEventListener("click", () => {
+    const openAccountDialog = () => {
       if (supabase && currentUser) {
         authForm.elements.email.value = currentUser.email || "";
         authForm.elements.password.value = "";
@@ -1174,7 +1272,9 @@
       }
       clearError($("#auth-error"));
       authDialog.showModal();
-    });
+    };
+    $("#account-button").addEventListener("click", openAccountDialog);
+    $("#mobile-account-button").addEventListener("click", openAccountDialog);
 
     if (!remoteEnabled) {
       loadBooks().catch(error => {
@@ -1187,24 +1287,19 @@
       notify("Supabase client could not load. Check your internet connection or CDN access.");
       return;
     }
-    $("#account-mode").textContent = "Sign in required";
+    $("#account-mode").textContent = "Read-only · sign in to edit";
     authForm.addEventListener("submit", signIn);
     $("#sign-out").addEventListener("click", signOut);
     supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
-      if (session?.user) {
-        window.setTimeout(() => {
-          loadBooks().catch(error => notify(`Could not load library: ${error.message}`));
-        }, 0);
-      }
     });
     supabase.auth.getSession().then(({ data, error }) => {
       if (error) throw error;
       setUser(data.session?.user || null);
-      if (data.session?.user) return loadBooks();
+      loadBooks().catch(loadError => notify(`Could not load public library: ${loadError.message}`));
     }).catch(error => {
-      showError($("#auth-error"), error);
-      if (!authDialog.open) authDialog.showModal();
+      notify(`Could not check sign-in status: ${error.message}`);
+      loadBooks().catch(loadError => notify(`Could not load public library: ${loadError.message}`));
     });
   }
 

@@ -35,7 +35,7 @@
           <span>— CICERO</span>
           <button class="account-button" id="account-button" type="button">
             <span class="avatar" id="avatar">G</span>
-            <span class="account-copy"><strong id="account-name">My library</strong><small id="account-mode">Private collection</small></span>
+            <span class="account-copy"><strong id="account-name">Public library</strong><small id="account-mode">Read-only · sign in to edit</small></span>
             <span class="account-menu">···</span>
           </button>
         </div>
@@ -55,6 +55,7 @@
             <button class="secondary-button bookshelves-top-button" id="bookshelves-button" type="button">Bookshelves</button>
             <button class="icon-button theme-button" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">☼</button>
             <button class="primary-button add-button" id="add-book" type="button"><span>＋</span> Add a book</button>
+            <button class="secondary-button mobile-account-button" id="mobile-account-button" type="button">Sign in</button>
           </div>
         </header>
 
@@ -154,6 +155,13 @@
 
     <div class="book-tooltip" id="book-tooltip" role="group" aria-label="Book details and shelf placement" hidden></div>
 
+    <dialog class="book-details-dialog" id="book-details-dialog" aria-labelledby="book-details-title">
+      <div class="book-details-dialog-inner">
+        <button class="icon-button close-dialog book-details-close" type="button" data-close aria-label="Close book details">×</button>
+        <div id="book-details-content"></div>
+      </div>
+    </dialog>
+
     <dialog class="book-dialog" id="book-dialog">
       <form id="book-form">
         <div class="dialog-heading">
@@ -202,10 +210,10 @@
     <dialog class="auth-dialog" id="auth-dialog">
       <form id="auth-form">
         <div class="dialog-heading">
-          <div><span class="eyebrow">JUST FOR YOU</span><h2>Your private library<span class="heading-dot">.</span></h2></div>
+          <div><span class="eyebrow">OWNER ACCESS</span><h2>Manage your library<span class="heading-dot">.</span></h2></div>
           <button class="icon-button close-dialog" type="button" data-close aria-label="Close">×</button>
         </div>
-        <p class="auth-intro">Sign in to access your library. Your books are private to your account.</p>
+        <p class="auth-intro">Sign in as the owner to add, edit, and organize books. The catalog is publicly visible.</p>
         <label class="field"><span>EMAIL ADDRESS</span><input name="email" type="email" autocomplete="email" required placeholder="you@example.com"></label>
         <label class="field"><span>PASSWORD</span><input name="password" type="password" autocomplete="current-password" required minlength="6" placeholder="Your password"></label>
         <div class="dialog-error" id="auth-error" role="alert" hidden></div>
