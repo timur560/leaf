@@ -28,9 +28,12 @@
   let bookshelves = [];
   let activeFilter = "all";
   let selectedAuthor = "";
-  let selectedTags = [];
+  let includedTags = [];
+  let excludedTags = [];
   let draftAuthors = [];
   let draftTags = [];
+  let suggestionTags = [];
+  let suggestedBookIds = new Set();
   let searchTerm = "";
   let editingId = null;
   let coverFile = null;
@@ -158,7 +161,8 @@
       const matchesAuthor = activeFilter !== "author-books" ||
         getBookAuthors(book).some(author => author.toLocaleLowerCase() === selectedAuthor.toLocaleLowerCase());
       const bookTags = getBookTags(book).map(tag => tag.toLocaleLowerCase());
-      const matchesTags = selectedTags.every(tag => bookTags.includes(tag.toLocaleLowerCase()));
+      const matchesTags = includedTags.every(tag => bookTags.includes(tag.toLocaleLowerCase())) &&
+        !excludedTags.some(tag => bookTags.includes(tag.toLocaleLowerCase()));
       const searchable = [book.title, ...getBookAuthors(book), ...getBookTags(book), book.isbn, book.notes];
       const matchesSearch = !normalizedSearch || searchable
         .some(value => String(value || "").toLocaleLowerCase().includes(normalizedSearch));
@@ -185,6 +189,27 @@
     return tags.length
       ? `<div class="book-tags">${tags.map(tag => `<button class="tag-chip" type="button" data-tag="${safeText(tag)}" title="Filter by ${safeText(tag)}">${safeText(tag)}</button>`).join("")}</div>`
       : "";
+  }
+
+  function renderTagPicker() {
+    const available = new Map(getTags().map(tag => [tag.name.toLocaleLowerCase(), tag.name]));
+    draftTags.forEach(tag => available.set(tag.toLocaleLowerCase(), tag));
+    $("#tag-picker-list").innerHTML = available.size
+      ? [...available.values()].sort((a, b) => a.localeCompare(b)).map(tag => {
+        const selected = draftTags.some(value => value.toLocaleLowerCase() === tag.toLocaleLowerCase());
+        return `<button class="tag-picker-chip${selected ? " selected" : ""}" type="button" data-draft-tag="${safeText(tag)}" aria-pressed="${selected}">${selected ? "✓ " : "+"} ${safeText(tag)}</button>`;
+      }).join("")
+      : `<span class="tag-picker-empty">Tags you add to your library will appear here.</span>`;
+  }
+
+  function renderSuggestionTags() {
+    const tags = getTags();
+    $("#suggest-tags").innerHTML = tags.length
+      ? tags.map(tag => {
+        const selected = suggestionTags.some(value => value.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
+        return `<button class="suggest-tag${selected ? " selected" : ""}" type="button" data-suggest-tag="${safeText(tag.name)}" aria-pressed="${selected}"><span>${selected ? "✓" : "+"}</span>${safeText(tag.name)}<small>${tag.count}</small></button>`;
+      }).join("")
+      : `<p class="suggest-no-tags">Your library has no tags yet. We can still find a lovely next read.</p>`;
   }
 
   function getSignedCoverUrl(path, optimize = false) {
@@ -244,7 +269,7 @@
   }
 
   function observeBookCovers() {
-    const images = grid.querySelectorAll("img[data-cover-path]");
+    const images = document.querySelectorAll("#book-grid img[data-cover-path]");
     if (!images.length) return;
     if (!("IntersectionObserver" in window)) {
       images.forEach(image => loadCoverImage(image));
@@ -380,14 +405,19 @@
     $("#tag-suggestions").innerHTML = tags
       .map(tag => `<option value="${safeText(tag.name)}"></option>`).join("");
     $("#tag-filter-options").innerHTML = tags.length ? tags.map(tag => {
-      const checked = selectedTags.some(selected => selected.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
-      return `<label class="tag-filter-option"><input type="checkbox" value="${safeText(tag.name)}" ${checked ? "checked" : ""}><span>${safeText(tag.name)}</span><small>${tag.count}</small></label>`;
-    }).join("") : `<p class="no-tags">Add tags to books to filter your collection.</p>`;
-    $("#tag-filter-count").textContent = selectedTags.length ? `(${selectedTags.length})` : "";
+      const included = includedTags.some(selected => selected.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
+      const excluded = excludedTags.some(selected => selected.toLocaleLowerCase() === tag.name.toLocaleLowerCase());
+      return `<div class="tag-filter-option">
+        <span class="tag-filter-name">${safeText(tag.name)}<small>${tag.count}</small></span>
+        <button type="button" class="tag-filter-choice include-choice${included ? " active" : ""}" data-tag-filter="include" data-tag="${safeText(tag.name)}" aria-pressed="${included}" aria-label="Include ${safeText(tag.name)}">+</button>
+        <button type="button" class="tag-filter-choice exclude-choice${excluded ? " active" : ""}" data-tag-filter="exclude" data-tag="${safeText(tag.name)}" aria-pressed="${excluded}" aria-label="Exclude ${safeText(tag.name)}">−</button>
+      </div>`;
+    }).join("") : `<p class="no-tags">Add tags to books to use tag filters.</p>`;
+    $("#clear-tag-filters").hidden = !includedTags.length && !excludedTags.length;
+    $("#tag-filter-panel").hidden = authorDirectory || bookshelfView;
     $("#view-select").value = bookView;
     $("#view-select").closest(".view-select").hidden = authorDirectory || bookshelfView;
     $("#sort-select").closest(".sort-select").hidden = authorDirectory || bookshelfView;
-    $("#tag-filter-wrap").hidden = authorDirectory || bookshelfView;
     $("#count-authors").textContent = authors.length;
     $("#count-bookshelves").textContent = bookshelves.length;
     $("#loading-state").hidden = !isLoading;
@@ -490,7 +520,7 @@
         ? "Try another search, change the tag filters, or choose a different shelf."
         : "Start with a title and author. You can fill in the rest whenever you like.";
     $("#empty-add").hidden = !canEdit || authorDirectory || count > 0 || activeFilter !== "all";
-    $("#sort-select").closest(".sort-select").hidden = authorDirectory;
+    $("#sort-select").closest(".sort-select").hidden = authorDirectory || bookshelfView;
     const currentBook = books.find(book => book.status === "reading");
     $("#reading-card").hidden = !currentBook || activeFilter !== "all";
     if (currentBook) {
@@ -508,7 +538,10 @@
   function activateFilter(filter) {
     activeFilter = filter;
     selectedAuthor = "";
-    if (filter === "authors") selectedTags = [];
+    if (filter === "authors" || filter === "bookshelves") {
+      includedTags = [];
+      excludedTags = [];
+    }
     render();
   }
 
@@ -560,6 +593,7 @@
       </div>
     </div>`;
     $("#book-details-dialog").showModal();
+    $("#book-details-dialog").focus({ preventScroll: true });
     const cover = $("#book-details-content [data-book-detail-cover]");
     if (cover) {
       getDisplayCoverUrl(cover.dataset.bookDetailCover).then(url => {
@@ -586,6 +620,7 @@
     if (!values.some(existing => existing.toLocaleLowerCase() === value.toLocaleLowerCase())) {
       values.push(value);
       renderSelectedChips(isAuthor ? $("#selected-authors") : $("#selected-tags"), values, kind);
+      if (!isAuthor) renderTagPicker();
     }
     input.value = "";
     clearError($("#dialog-error"));
@@ -598,12 +633,81 @@
     if (isAuthor) draftAuthors = unique;
     else draftTags = unique;
     renderSelectedChips(isAuthor ? $("#selected-authors") : $("#selected-tags"), unique, kind);
+    if (!isAuthor) renderTagPicker();
   }
 
   function removeDraftValue(kind, index) {
     const values = kind === "author" ? draftAuthors : draftTags;
     values.splice(index, 1);
     setDraftValues(kind, values);
+  }
+
+  function openSuggestionDialog() {
+    suggestionTags = [];
+    suggestedBookIds = new Set();
+    $("#suggest-result").hidden = true;
+    $("#suggest-result").innerHTML = "";
+    renderSuggestionTags();
+    $("#suggest-dialog").showModal();
+  }
+
+  function showSuggestion() {
+    const candidates = books.filter(book => book.status !== "read" && !suggestedBookIds.has(String(book.id)));
+    const result = $("#suggest-result");
+    if (!candidates.length) {
+      result.innerHTML = `<div class="suggest-empty"><span aria-hidden="true">✧</span><h3>That’s all for now.</h3><p>You’ve explored every unread book in your library. Add another book or mark something as unread to keep the magic going.</p></div>`;
+      result.hidden = false;
+      return;
+    }
+    const ranked = candidates.map(book => {
+      const bookTags = getBookTags(book).map(tag => tag.toLocaleLowerCase());
+      return {
+        book,
+        matches: suggestionTags.filter(tag => bookTags.includes(tag.toLocaleLowerCase())).length,
+      };
+    });
+    const highestMatchCount = ranked.reduce((highest, item) => Math.max(highest, item.matches), 0);
+    const best = ranked.filter(item => item.matches === highestMatchCount);
+    const { book } = best[Math.floor(Math.random() * best.length)];
+    suggestedBookIds.add(String(book.id));
+    const coverMarkup = book.cover_data || book.cover_url
+      ? `<img src="${safeText(book.cover_data || book.cover_url)}" alt="">`
+      : book.cover_path && supabase
+        ? `<img data-suggest-cover="${safeText(book.cover_path)}" alt="">`
+        : `<div class="suggest-cover-placeholder" aria-hidden="true"><span>✦</span></div>`;
+    const matchCopy = suggestionTags.length
+      ? highestMatchCount === suggestionTags.length
+        ? "A perfect match for every mood you picked"
+        : highestMatchCount > 1
+          ? `A lovely match for ${highestMatchCount} of your selected tags`
+          : highestMatchCount === 1
+            ? "A little something that matches your mood"
+            : "A fresh possibility from your unread shelf"
+      : "A little inspiration from your unread shelf";
+    result.innerHTML = `<article class="suggest-pick">
+      <div class="suggest-pick-cover">${coverMarkup}</div>
+      <div class="suggest-pick-copy"><span class="eyebrow">${safeText(matchCopy)}</span><h3>${safeText(book.title)}</h3><p>by ${safeText(getBookAuthors(book).join(", "))}</p>
+        ${getBookTags(book).length ? `<div class="suggest-pick-tags">${getBookTags(book).map(tag => `<span>${safeText(tag)}</span>`).join("")}</div>` : ""}
+        <button type="button" class="suggest-view-book" data-view-book="${safeText(book.id)}">Meet this book <span>↗</span></button>
+      </div>
+    </article>`;
+    result.hidden = false;
+    result.classList.remove("is-revealing");
+    void result.offsetWidth;
+    result.classList.add("is-revealing");
+    const cover = result.querySelector("[data-suggest-cover]");
+    if (cover) {
+      getDisplayCoverUrl(cover.dataset.suggestCover).then(url => {
+        if (cover.isConnected) cover.src = url;
+      }).catch(error => notify(`Could not load cover: ${error.message}`));
+    }
+    const confetti = $("#suggest-confetti");
+    confetti.innerHTML = Array.from({ length: 28 }, (_, index) =>
+      `<i style="--i:${index};--x:${Math.round(Math.random() * 100)}%;--h:${Math.round(Math.random() * 360)}deg;--dx:${(index - 14) * 8}px;--dy:${110 + (index % 4) * 16}px;--delay:${index * 14}ms;--rotation:${index * 37}deg" aria-hidden="true"></i>`
+    ).join("");
+    confetti.classList.remove("celebrate");
+    void confetti.offsetWidth;
+    confetti.classList.add("celebrate");
   }
 
   async function loadBooks() {
@@ -1042,7 +1146,10 @@
         return;
       }
       const details = event.target.closest("[data-view-book]");
-      if (details) openBookDetails(details.dataset.viewBook);
+      if (details) {
+        if ($("#suggest-dialog").open) $("#suggest-dialog").close();
+        openBookDetails(details.dataset.viewBook);
+      }
     });
     $("#continue-reading").addEventListener("click", event => {
       if (event.currentTarget.dataset.viewBook) openBookDetails(event.currentTarget.dataset.viewBook);
@@ -1174,31 +1281,38 @@
       const tagChip = event.target.closest("[data-tag]");
       if (!tagChip) return;
       const name = tagChip.dataset.tag;
-      if (!selectedTags.some(tag => tag.toLocaleLowerCase() === name.toLocaleLowerCase())) selectedTags.push(name);
+      if (!includedTags.some(tag => tag.toLocaleLowerCase() === name.toLocaleLowerCase())) includedTags.push(name);
+      excludedTags = excludedTags.filter(tag => tag.toLocaleLowerCase() !== name.toLocaleLowerCase());
       activeFilter = "all";
       selectedAuthor = "";
       render();
     });
-    $("#tag-filter-toggle").addEventListener("click", () => {
-      const panel = $("#tag-filter-panel");
-      panel.hidden = !panel.hidden;
-      $("#tag-filter-toggle").setAttribute("aria-expanded", String(!panel.hidden));
-    });
-    $("#tag-filter-options").addEventListener("change", event => {
-      const checkbox = event.target.closest('input[type="checkbox"]');
-      if (!checkbox) return;
-      selectedTags = selectedTags.filter(tag => tag.toLocaleLowerCase() !== checkbox.value.toLocaleLowerCase());
-      if (checkbox.checked) selectedTags.push(checkbox.value);
-      if (activeFilter === "authors") activeFilter = "all";
+    $("#tag-filter-options").addEventListener("click", event => {
+      const choice = event.target.closest("[data-tag-filter]");
+      if (!choice) return;
+      const name = choice.dataset.tag;
+      const included = includedTags.some(tag => tag.toLocaleLowerCase() === name.toLocaleLowerCase());
+      const excluded = excludedTags.some(tag => tag.toLocaleLowerCase() === name.toLocaleLowerCase());
+      includedTags = includedTags.filter(tag => tag.toLocaleLowerCase() !== name.toLocaleLowerCase());
+      excludedTags = excludedTags.filter(tag => tag.toLocaleLowerCase() !== name.toLocaleLowerCase());
+      if (choice.dataset.tagFilter === "include" && !included) includedTags.push(name);
+      if (choice.dataset.tagFilter === "exclude" && !excluded) excludedTags.push(name);
+      if (activeFilter === "authors" || activeFilter === "bookshelves") activeFilter = "all";
       render();
-      $("#tag-filter-panel").hidden = false;
-      $("#tag-filter-toggle").setAttribute("aria-expanded", "true");
     });
     $("#clear-tag-filters").addEventListener("click", () => {
-      selectedTags = [];
+      includedTags = [];
+      excludedTags = [];
       render();
-      $("#tag-filter-panel").hidden = false;
-      $("#tag-filter-toggle").setAttribute("aria-expanded", "true");
+    });
+    $("#tag-picker-list").addEventListener("click", event => {
+      const chip = event.target.closest("[data-draft-tag]");
+      if (!chip) return;
+      const value = chip.dataset.draftTag;
+      const existing = draftTags.findIndex(tag => tag.toLocaleLowerCase() === value.toLocaleLowerCase());
+      if (existing >= 0) draftTags.splice(existing, 1);
+      else draftTags.push(value);
+      setDraftValues("tag", draftTags);
     });
     $("#add-author").addEventListener("click", () => addDraftValue("author"));
     $("#add-tag").addEventListener("click", () => addDraftValue("tag"));
@@ -1225,6 +1339,24 @@
     $("#search-input").addEventListener("input", event => {
       searchTerm = event.target.value;
       render();
+    });
+    $("#suggest-book").addEventListener("click", openSuggestionDialog);
+    $("#suggest-tags").addEventListener("click", event => {
+      const chip = event.target.closest("[data-suggest-tag]");
+      if (!chip) return;
+      const value = chip.dataset.suggestTag;
+      const index = suggestionTags.findIndex(tag => tag.toLocaleLowerCase() === value.toLocaleLowerCase());
+      if (index >= 0) suggestionTags.splice(index, 1);
+      else suggestionTags.push(value);
+      renderSuggestionTags();
+    });
+    $("#get-suggestion").addEventListener("click", () => {
+      showSuggestion();
+      $("#get-suggestion").innerHTML = `<span aria-hidden="true">✦</span> Suggest another`;
+    });
+    $("#suggest-dialog").addEventListener("close", () => {
+      suggestedBookIds = new Set();
+      $("#get-suggestion").innerHTML = `<span aria-hidden="true">✦</span> Surprise me`;
     });
     $("#sort-select").addEventListener("change", render);
     $("#view-select").addEventListener("change", event => {

@@ -6,11 +6,12 @@ Leaf is a responsive, installable single-page app for keeping a personal book ca
 
 - Add a book quickly with its title and one or more authors.
 - Reuse author suggestions, browse all authors, and open an author's books.
-- Add multiple tags to a book, create or reuse tag suggestions, and filter by one or more tags (a book must have every selected tag).
+- Add multiple tags to a book from clickable existing-tag chips or create new ones. Include filters require every included tag; excluded tags hide any matching book.
 - Add a cover photo, reading status, publication year, page count, ISBN, and notes now or later.
 - Open a read-only details panel from a public book's cover to view its full metadata.
 - Search and sort books; filter by reading status.
-- Switch the collection between compact tiles, small tiles, large tiles, a table, and a list; the selected view is remembered on this device.
+- Switch the collection between compact tiles, small tiles, large tiles, a table, a list, and an animated 3D gallery; the selected view is remembered on this device.
+- Ask for a next-read suggestion by choosing tags; recommendations start with the closest unread matches and avoid repeats until the unread shelf is exhausted.
 - Build named bookshelves with two or more shelves, assign books by drag-and-drop or from a book's popover, and gather unshelved books in a floor pile.
 - See a loading indicator while the collection is being fetched.
 - Change a book's status directly from its card, or edit/remove it.

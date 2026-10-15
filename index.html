@@ -82,16 +82,7 @@
           <div class="section-toolbar">
             <div><h2 id="section-title">Your collection</h2><span id="results-label" class="results-label">0 books</span></div>
             <div class="toolbar-controls">
-              <div class="tag-filter-wrap" id="tag-filter-wrap">
-                <button class="secondary-button tag-filter-button" id="tag-filter-toggle" type="button" aria-expanded="false" aria-controls="tag-filter-panel">
-                  Tags <span id="tag-filter-count"></span> <span aria-hidden="true">⌄</span>
-                </button>
-                <div class="tag-filter-panel" id="tag-filter-panel" hidden>
-                  <div class="tag-filter-heading"><strong>Filter by tags</strong><button type="button" id="clear-tag-filters">Clear</button></div>
-                  <div class="tag-filter-options" id="tag-filter-options"></div>
-                  <small>Books must have every selected tag.</small>
-                </div>
-              </div>
+              <button class="primary-button suggest-button" id="suggest-book" type="button"><span aria-hidden="true">✦</span> Suggest a book</button>
               <label class="view-select">View
                 <select id="view-select" aria-label="Book view">
                   <option value="compact">Compact tiles</option>
@@ -112,6 +103,11 @@
             </div>
           </div>
 
+          <section class="tag-filter-panel" id="tag-filter-panel" aria-label="Filter books by tags">
+            <div class="tag-filter-heading"><div><strong>Browse by tag</strong><small>Include all selected tags; exclude any selected tag.</small></div><button type="button" id="clear-tag-filters">Clear</button></div>
+            <div class="tag-filter-options" id="tag-filter-options"></div>
+            <div class="tag-filter-legend"><span><i class="include-mark">+</i> Include</span><span><i class="exclude-mark">−</i> Exclude</span></div>
+          </section>
           <div class="loading-state" id="loading-state" role="status" aria-live="polite" hidden>
             <span class="loading-spinner" aria-hidden="true"></span>
             <span>Loading your books…</span>
@@ -155,10 +151,21 @@
 
     <div class="book-tooltip" id="book-tooltip" role="group" aria-label="Book details and shelf placement" hidden></div>
 
-    <dialog class="book-details-dialog" id="book-details-dialog" aria-labelledby="book-details-title">
+    <dialog class="book-details-dialog" id="book-details-dialog" aria-labelledby="book-details-title" tabindex="-1">
       <div class="book-details-dialog-inner">
         <button class="icon-button close-dialog book-details-close" type="button" data-close aria-label="Close book details">×</button>
         <div id="book-details-content"></div>
+      </div>
+    </dialog>
+
+    <dialog class="suggest-dialog" id="suggest-dialog" aria-labelledby="suggest-title">
+      <div class="suggest-dialog-inner">
+        <button class="icon-button close-dialog suggest-close" type="button" data-close aria-label="Close suggestions">×</button>
+        <div class="suggest-intro"><span class="suggest-sparkle" aria-hidden="true">✦</span><span class="eyebrow">A LITTLE READING INSPIRATION</span><h2 id="suggest-title">What are you in the mood for?<span class="heading-dot">.</span></h2><p>Choose any tags and we’ll find a book that fits. We’ll start with your closest matches, then explore the rest of your unread shelf.</p></div>
+        <div class="suggest-tags" id="suggest-tags" aria-label="Choose tags"></div>
+        <div class="suggest-result" id="suggest-result" aria-live="polite" hidden></div>
+        <div class="suggest-actions"><button class="secondary-button" type="button" data-close>Maybe later</button><button class="primary-button" type="button" id="get-suggestion"><span aria-hidden="true">✦</span> Surprise me</button></div>
+        <div class="suggest-confetti" id="suggest-confetti" aria-hidden="true"></div>
       </div>
     </dialog>
 
@@ -187,6 +194,7 @@
             <div class="field full-field chip-field">
               <span>TAGS</span>
               <div class="chip-entry"><input id="tag-input" list="tag-suggestions" maxlength="40" placeholder="Choose or create a tag" autocomplete="off" aria-label="Add a tag"><datalist id="tag-suggestions"></datalist><button class="chip-add" id="add-tag" type="button">Add</button></div>
+              <div class="tag-picker-list" id="tag-picker-list" aria-label="Existing tags"></div>
               <div class="selected-chips" id="selected-tags" aria-live="polite"></div>
             </div>
           </div>
