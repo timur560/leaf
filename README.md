@@ -12,18 +12,18 @@ Leaf is a responsive, installable single-page app for keeping a personal book ca
 - Search and sort books; filter by reading status.
 - Switch the collection between compact tiles, small tiles, large tiles, a table, a list, and an animated 3D gallery; the selected view is remembered on this device.
 - Ask for a next-read suggestion by choosing tags; recommendations start with the closest unread matches and avoid repeats until the unread shelf is exhausted.
-- Build named bookshelves with two or more shelves, assign books by drag-and-drop or from a book's popover, and gather unshelved books in a floor pile.
+- Build private named bookshelves with two or more shelves, assign books by drag-and-drop or from a book's popover, and gather unshelved books in a floor pile. Only the signed-in owner can see them.
 - See a loading indicator while the collection is being fetched.
 - Change a book's status directly from its card, or edit/remove it.
 - Switch between light and dark themes.
 - Install it as a PWA on supported desktop and mobile browsers.
 - Use Supabase Auth, Postgres, and Supabase Storage when configured.
-- Let anyone browse the Supabase-backed catalog and covers without signing in; only the signed-in owner can change books or shelves.
+- Let anyone browse the Supabase-backed catalog and covers without signing in; only the signed-in owner can see or change bookshelves and change books.
 - Load cover images only as they approach the visible area. Existing covers use Supabase image transformations when enabled for the project, with automatic original-image fallback. New large JPEG, PNG, and WebP covers are resized and converted to WebP when that reduces file size.
 
 Without Supabase credentials, the app works in a local-only mode and saves its catalog in that browser's local storage. This is useful for trying the interface, but it is not a backed-up database and does not sync between devices.
 
-**Public visibility:** when using Supabase, all book fields (including notes, reading status, ISBN, and tags), bookshelves, and covers are publicly readable by anyone. Sign-in is required only for changes. Do not store anything in the catalog that you do not want to publish.
+**Public visibility:** when using Supabase, all book fields (including notes, reading status, ISBN, and tags) and covers are publicly readable by anyone. Bookshelves are visible only to the signed-in owner. Sign-in is required to view or change bookshelves and to change books. Do not store anything in the catalog that you do not want to publish.
 
 ## Connect Supabase
 
@@ -70,7 +70,9 @@ alter table public.books
 
 alter table public.books enable row level security;
 alter table public.bookshelves enable row level security;
-grant select on public.books, public.bookshelves to anon, authenticated;
+grant select on public.books to anon, authenticated;
+revoke select on public.bookshelves from anon;
+grant select on public.bookshelves to authenticated;
 
 create policy "Public can read books"
   on public.books for select to anon, authenticated
@@ -89,9 +91,9 @@ create policy "Delete your own books"
   on public.books for delete to authenticated
   using ((select auth.uid()) = user_id);
 
-create policy "Public can read bookshelves"
-  on public.bookshelves for select to anon, authenticated
-  using (true);
+create policy "Read your own bookshelves"
+  on public.bookshelves for select to authenticated
+  using ((select auth.uid()) = user_id);
 
 create policy "Add bookshelves to your own library"
   on public.bookshelves for insert to authenticated
@@ -142,8 +144,12 @@ alter table public.books
            (bookshelf_id is not null and bookshelf_shelf is not null and bookshelf_shelf >= 1));
 
 alter table public.bookshelves enable row level security;
-grant select on public.books, public.bookshelves to anon, authenticated;
+grant select on public.books to anon, authenticated;
+revoke select on public.bookshelves from anon;
+grant select on public.bookshelves to authenticated;
 
+drop policy if exists "Public can read bookshelves" on public.bookshelves;
+drop policy if exists "Read your own bookshelves" on public.bookshelves;
 create policy "Read your own bookshelves"
   on public.bookshelves for select to authenticated
   using ((select auth.uid()) = user_id);
@@ -162,7 +168,7 @@ create policy "Delete your own bookshelves"
   using ((select auth.uid()) = user_id);
 ```
 
-Row Level Security is essential: it allows anonymous reads, while the insert, update, and delete policies still allow only the authenticated owner to make changes. Never put a `service_role` key in this app.
+Row Level Security is essential: it allows anonymous book reads while limiting bookshelf reads and all changes to the authenticated owner. Never put a `service_role` key in this app.
 
 ### 2. Set up cover storage
 
@@ -202,17 +208,22 @@ create policy "Delete your own book covers"
   );
 ```
 
-For an existing database, run this additional read-only policy once to enable anonymous catalog and cover access. Keep the existing owner-only insert, update, and delete policies unchanged:
+For an existing database, run this SQL to enable anonymous book and cover access while ensuring bookshelves remain private. Keep the existing owner-only insert, update, and delete policies unchanged:
 
 ```sql
 create policy "Public can read books"
   on public.books for select to anon, authenticated
   using (true);
 
-create policy "Public can read bookshelves"
-  on public.bookshelves for select to anon, authenticated
-  using (true);
-grant select on public.books, public.bookshelves to anon, authenticated;
+alter table public.bookshelves enable row level security;
+grant select on public.books to anon, authenticated;
+revoke select on public.bookshelves from anon;
+grant select on public.bookshelves to authenticated;
+drop policy if exists "Public can read bookshelves" on public.bookshelves;
+drop policy if exists "Read your own bookshelves" on public.bookshelves;
+create policy "Read your own bookshelves"
+  on public.bookshelves for select to authenticated
+  using ((select auth.uid()) = user_id);
 
 create policy "Public can read book covers"
   on storage.objects for select to anon, authenticated
@@ -239,7 +250,7 @@ This key is designed to be used in browser code and is not a secret; database an
 
 Commit/push the app files to your repository. In **Settings → Pages**, choose the branch and folder containing `index.html` (usually `main` and `/(root)`) and save. Wait for the Pages URL, then add that exact URL to Supabase's Site URL/redirect URL settings above.
 
-GitHub Pages serves the HTML, CSS, and JavaScript publicly; it cannot password-protect the site itself. The catalog and cover images are intentionally public and read-only. Only the signed-in owner can add, edit, move, or remove books and bookshelves; Supabase RLS and Storage policies enforce this even if someone bypasses the app UI. Never put a `service_role` key in the repository.
+GitHub Pages serves the HTML, CSS, and JavaScript publicly; it cannot password-protect the site itself. The catalog and cover images are intentionally public and read-only. Only the signed-in owner can see, add, edit, move, or remove bookshelves, or add, edit, move, or remove books; Supabase RLS and Storage policies enforce this even if someone bypasses the app UI. Never put a `service_role` key in the repository.
 
 ## Install and offline notes
 

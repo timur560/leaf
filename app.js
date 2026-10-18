@@ -48,6 +48,7 @@
   let coverTransformCheck = null;
   const coverUrlCache = new Map();
   const canEditLibrary = () => remoteEnabled ? Boolean(supabase && currentUser) : true;
+  const canViewBookshelves = () => !remoteEnabled || Boolean(supabase && currentUser);
   let bookView = BOOK_VIEWS.includes(localStorage.getItem(VIEW_KEY))
     ? localStorage.getItem(VIEW_KEY)
     : "small";
@@ -385,6 +386,7 @@
   function render() {
     bookTooltipPinned = false;
     $("#book-tooltip").hidden = true;
+    if (activeFilter === "bookshelves" && !canViewBookshelves()) activeFilter = "all";
     const filtered = getFilteredBooks();
     const authors = getAuthors();
     const tags = getTags();
@@ -392,8 +394,11 @@
     const bookshelfView = activeFilter === "bookshelves";
     const authorBooks = activeFilter === "author-books";
     const canEdit = canEditLibrary();
+    const canViewShelves = canViewBookshelves();
     $("#add-book").hidden = !canEdit;
     $("#add-bookshelf").hidden = !canEdit;
+    $("#bookshelves-nav").hidden = !canViewShelves;
+    $("#bookshelves-button").hidden = !canViewShelves;
     $("#mobile-account-button").hidden = !supabase;
     $("#mobile-account-button").textContent = currentUser ? "Account" : "Sign in";
     $("#account-name").textContent = currentUser?.email?.split("@")[0] || (supabase ? "Public library" : "My library");
@@ -419,7 +424,7 @@
     $("#view-select").closest(".view-select").hidden = authorDirectory || bookshelfView;
     $("#sort-select").closest(".sort-select").hidden = authorDirectory || bookshelfView;
     $("#count-authors").textContent = authors.length;
-    $("#count-bookshelves").textContent = bookshelves.length;
+    $("#count-bookshelves").textContent = canViewShelves ? bookshelves.length : 0;
     $("#loading-state").hidden = !isLoading;
     $("#authors-grid").hidden = isLoading || !authorDirectory;
     $("#authors-grid").innerHTML = authorDirectory ? authors
@@ -432,8 +437,12 @@
     const visibleAuthors = authorDirectory
       ? authors.filter(author => !searchTerm.trim() || author.name.toLocaleLowerCase().includes(searchTerm.trim().toLocaleLowerCase()))
       : [];
-    $("#bookshelves-view").hidden = isLoading || !bookshelfView;
-    renderBookshelves(filtered);
+    $("#bookshelves-view").hidden = isLoading || !bookshelfView || !canViewShelves;
+    if (canViewShelves) renderBookshelves(filtered);
+    else {
+      $("#bookshelf-list").replaceChildren();
+      $("#floor-books").replaceChildren();
+    }
     grid.dataset.view = bookView;
     grid.hidden = isLoading || authorDirectory || bookshelfView || filtered.length === 0;
     const bookMarkup = filtered.map(book => {
@@ -536,6 +545,7 @@
   }
 
   function activateFilter(filter) {
+    if (filter === "bookshelves" && !canViewBookshelves()) return;
     activeFilter = filter;
     selectedAuthor = "";
     if (filter === "authors" || filter === "bookshelves") {
@@ -607,7 +617,7 @@
         ${quickControls}
         ${metadata.length ? `<div class="book-details-metadata">${metadata.map(([label, value]) => `<div><span>${safeText(label)}</span><strong>${safeText(value)}</strong></div>`).join("")}</div>` : ""}
         ${tags.length ? `<div class="book-details-tags" aria-label="Tags">${tags.map(tag => `<span>${safeText(tag)}</span>`).join("")}</div>` : ""}
-        <div class="book-details-location"><span class="book-details-location-icon" aria-hidden="true">⌂</span><div><small>BOOKSHELF</small><strong>${safeText(shelfLabel)}</strong></div></div>
+        ${canViewBookshelves() ? `<div class="book-details-location"><span class="book-details-location-icon" aria-hidden="true">⌂</span><div><small>BOOKSHELF</small><strong>${safeText(shelfLabel)}</strong></div></div>` : ""}
         ${book.notes ? `<section class="book-details-notes"><span class="eyebrow">YOUR NOTES</span><p>${safeText(book.notes)}</p></section>` : ""}
       </div>
     </div>`;
@@ -743,7 +753,9 @@
       }
       const [bookResult, bookshelfResult] = await Promise.all([
         supabase.from("books").select("*").order("created_at", { ascending: false }),
-        supabase.from("bookshelves").select("*").order("created_at", { ascending: true })
+        canViewBookshelves()
+          ? supabase.from("bookshelves").select("*").order("created_at", { ascending: true })
+          : Promise.resolve({ data: [], error: null })
       ]);
       if (bookResult.error) throw bookResult.error;
       if (bookshelfResult.error) throw bookshelfResult.error;
@@ -763,6 +775,8 @@
     $("#account-mode").textContent = user ? "Owner · can edit" :
       supabase ? "Read-only · sign in to edit" : "This device only";
     if (!user) {
+      bookshelves = [];
+      if (activeFilter === "bookshelves") activeFilter = "all";
       coverUrlCache.clear();
       render();
     } else if (authDialog.open) authDialog.close();
