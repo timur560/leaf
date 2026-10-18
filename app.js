@@ -8,6 +8,8 @@
   };
   const STORAGE_KEY = "leaf-library-books-v1";
   const BOOKSHELVES_KEY = "leaf-library-bookshelves-v1";
+  const COVER_CACHE_NAME = "leaf-library-covers-v1";
+  const COVER_CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
   const THEME_KEY = "leaf-library-theme";
   const VIEW_KEY = "leaf-library-view";
   const BOOK_VIEWS = ["compact", "small", "large", "table", "list"];
@@ -46,7 +48,9 @@
   let coverObserver = null;
   let coverTransformsSupported = null;
   let coverTransformCheck = null;
+  let coverCacheCleanup = null;
   const coverUrlCache = new Map();
+  const coverObjectUrlCache = new Map();
   const canEditLibrary = () => remoteEnabled ? Boolean(supabase && currentUser) : true;
   const canViewBookshelves = () => !remoteEnabled || Boolean(supabase && currentUser);
   let bookView = BOOK_VIEWS.includes(localStorage.getItem(VIEW_KEY))
@@ -253,9 +257,89 @@
     return coverTransformCheck;
   }
 
+  function coverCacheRequest(path) {
+    const url = new URL("/__leaf-cover-cache__", location.origin);
+    url.searchParams.set("path", path);
+    return new Request(url);
+  }
+
+  async function cleanupExpiredCoverCache() {
+    if (!("caches" in window)) return;
+    if (!coverCacheCleanup) {
+      coverCacheCleanup = (async () => {
+        const cache = await caches.open(COVER_CACHE_NAME);
+        const now = Date.now();
+        for (const request of await cache.keys()) {
+          const response = await cache.match(request);
+          const cachedAt = Number(response?.headers.get("X-Leaf-Cached-At"));
+          if (!Number.isFinite(cachedAt) || now - cachedAt >= COVER_CACHE_MAX_AGE) {
+            await cache.delete(request);
+          }
+        }
+      })().catch(error => {
+        coverCacheCleanup = null;
+        throw error;
+      });
+    }
+    await coverCacheCleanup;
+  }
+
+  async function getCachedCoverUrl(path) {
+    if (!("caches" in window) || !("URL" in window)) return null;
+    const cache = await caches.open(COVER_CACHE_NAME);
+    await cleanupExpiredCoverCache();
+    const request = coverCacheRequest(path);
+    const cached = await cache.match(request);
+    if (!cached) return null;
+    const cachedAt = Number(cached.headers.get("X-Leaf-Cached-At"));
+    if (!Number.isFinite(cachedAt) || Date.now() - cachedAt >= COVER_CACHE_MAX_AGE) {
+      await cache.delete(request);
+      const previousUrl = coverObjectUrlCache.get(path);
+      if (previousUrl) URL.revokeObjectURL(previousUrl);
+      coverObjectUrlCache.delete(path);
+      return null;
+    }
+    const existingUrl = coverObjectUrlCache.get(path);
+    if (existingUrl) return existingUrl;
+    const objectUrl = URL.createObjectURL(await cached.blob());
+    coverObjectUrlCache.set(path, objectUrl);
+    return objectUrl;
+  }
+
+  async function cacheCoverResponse(path, response) {
+    if (!("caches" in window)) return null;
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    try {
+      const cache = await caches.open(COVER_CACHE_NAME);
+      const headers = new Headers({
+        "Content-Type": blob.type || "application/octet-stream",
+        "X-Leaf-Cached-At": String(Date.now())
+      });
+      await cache.put(coverCacheRequest(path), new Response(blob, { headers }));
+      coverObjectUrlCache.set(path, objectUrl);
+      return objectUrl;
+    } catch (error) {
+      coverObjectUrlCache.set(path, objectUrl);
+      notify(`Could not cache cover for future visits: ${error.message}`);
+      return objectUrl;
+    }
+  }
+
   async function getDisplayCoverUrl(path) {
+    let cachedUrl = null;
+    try {
+      cachedUrl = await getCachedCoverUrl(path);
+    } catch (error) {
+      notify(`Could not check the cached cover: ${error.message}`);
+    }
+    if (cachedUrl) return cachedUrl;
     const optimize = await supportsCoverTransforms(path);
-    return getSignedCoverUrl(path, optimize);
+    const signedUrl = await getSignedCoverUrl(path, optimize);
+    const response = await fetch(signedUrl);
+    if (!response.ok) throw new Error(`Cover request failed with status ${response.status}.`);
+    if ("caches" in window) return cacheCoverResponse(path, response);
+    return URL.createObjectURL(await response.blob());
   }
 
   async function loadCoverImage(image) {
@@ -778,6 +862,8 @@
       bookshelves = [];
       if (activeFilter === "bookshelves") activeFilter = "all";
       coverUrlCache.clear();
+      coverObjectUrlCache.forEach(url => URL.revokeObjectURL(url));
+      coverObjectUrlCache.clear();
       render();
     } else if (authDialog.open) authDialog.close();
   }
@@ -1181,6 +1267,7 @@
   function init() {
     const preferredTheme = localStorage.getItem(THEME_KEY) ||
       (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    cleanupExpiredCoverCache().catch(error => notify(`Could not clean the cover cache: ${error.message}`));
     document.documentElement.dataset.theme = preferredTheme;
     $("#today-label").textContent = new Intl.DateTimeFormat("en", { weekday: "long", month: "long", day: "numeric" })
       .format(new Date()).toLocaleUpperCase();

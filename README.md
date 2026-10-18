@@ -172,7 +172,7 @@ Row Level Security is essential: it allows anonymous book reads while limiting b
 
 ### 2. Set up cover storage
 
-In **Storage**, create a bucket named `book-covers` and leave **Public bucket** turned off. Then run the following in the SQL Editor. The app stores each user's files in a folder named with their auth user ID and uses short-lived signed URLs to display them. The read policy allows any visitor to request signed URLs for covers; upload, update, and delete remain limited to the authenticated owner.
+In **Storage**, create a bucket named `book-covers` and leave **Public bucket** turned off. Then run the following in the SQL Editor. The app stores each user's files in a folder named with their auth user ID and uses short-lived signed URLs to retrieve covers. Downloaded cover images are cached on each device for 30 days, so returning visits usually do not need another Storage request. The read policy allows any visitor to request signed URLs for covers; upload, update, and delete remain limited to the authenticated owner.
 
 ```sql
 create policy "Public can read book covers"
@@ -254,4 +254,4 @@ GitHub Pages serves the HTML, CSS, and JavaScript publicly; it cannot password-p
 
 ## Install and offline notes
 
-Open the HTTPS GitHub Pages URL on your phone and choose **Add to Home Screen** (iOS Safari) or **Install app** (supported Android browsers). The service worker caches the app shell. Supabase sign-in, synced catalog updates, and cover loading require a network connection; local-only mode stores data only in that browser and its images can use substantial device storage.
+Open the HTTPS GitHub Pages URL on your phone and choose **Add to Home Screen** (iOS Safari) or **Install app** (supported Android browsers). The service worker caches the app shell, and downloaded Supabase covers are cached on the device for 30 days before they are fetched again. Supabase sign-in and synced catalog updates require a network connection; local-only mode stores data only in that browser and its images can use substantial device storage.
