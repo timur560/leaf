@@ -138,6 +138,9 @@ const puppeteer = require('puppeteer');
       { id: 'fixture-read', title: 'Already read fixture', authors: ['Fixture Author'], tags: ['Fiction', 'Adventure'], status: 'read', created_at: new Date().toISOString() }
     );
     localStorage.setItem('leaf-library-books-v1', JSON.stringify(books));
+    localStorage.setItem('leaf-library-bookshelves-v1', JSON.stringify([
+      { id: 'fixture-bookcase', name: 'Fixture bookcase', shelf_count: 2 }
+    ]));
   });
   await page.reload({ waitUntil: 'networkidle2' });
 
@@ -161,6 +164,35 @@ const puppeteer = require('puppeteer');
     process.exit(7);
   }
   await page.click('#book-dialog [data-close]');
+
+  await page.evaluate(() => document.querySelector('#book-grid [data-view-book="fixture-fiction"]').click());
+  await page.waitForSelector('#book-details-dialog[open] [data-details-status]');
+  await page.select('[data-details-status="fixture-fiction"]', 'read');
+  await page.waitForFunction(() => {
+    const books = JSON.parse(localStorage.getItem('leaf-library-books-v1') || '[]');
+    return books.find(book => book.id === 'fixture-fiction')?.status === 'read';
+  });
+  await page.select('[data-details-status="fixture-fiction"]', 'want');
+  await page.waitForFunction(() => {
+    const books = JSON.parse(localStorage.getItem('leaf-library-books-v1') || '[]');
+    return books.find(book => book.id === 'fixture-fiction')?.status === 'want';
+  });
+  await page.select('[data-details-placement="fixture-fiction"]', 'fixture-bookcase:2');
+  await page.waitForFunction(() => {
+    const books = JSON.parse(localStorage.getItem('leaf-library-books-v1') || '[]');
+    const book = books.find(item => item.id === 'fixture-fiction');
+    return book?.status === 'want' &&
+      book?.bookshelf_id === 'fixture-bookcase' &&
+      Number(book?.bookshelf_shelf) === 2;
+  });
+  const detailsStatus = await page.$eval('.book-details-status', element => element.textContent);
+  const detailsLocation = await page.$eval('.book-details-location strong', element => element.textContent);
+  if (detailsStatus !== 'Want to read' || detailsLocation !== 'Fixture bookcase, shelf 2') {
+    console.error('Book details quick controls did not update their displayed values:', detailsStatus, detailsLocation);
+    await browser.close();
+    process.exit(14);
+  }
+  await page.click('#book-details-dialog [data-close]');
 
   // Details stay stationary while the page is scrolled; gallery arrows advance horizontally.
   await page.select('#view-select', 'gallery');

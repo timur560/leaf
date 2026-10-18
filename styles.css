@@ -322,6 +322,10 @@ h1 { margin: 15px 0 9px; font-family: "Playfair Display", Georgia, serif; font-s
 .book-details-edit svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.7; }
 .book-details-copy h2 { margin: 9px 0 6px; font-family: "Playfair Display", Georgia, serif; font-size: clamp(25px, 3vw, 34px); font-weight: 600; letter-spacing: -.6px; line-height: 1.13; overflow-wrap: anywhere; }
 .book-details-authors { margin: 0 0 22px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.book-details-quick-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0 18px; }
+.book-details-quick-controls label { display: grid; min-width: 0; gap: 6px; }
+.book-details-quick-controls label > span { color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .9px; }
+.book-details-quick-controls select { width: 100%; min-width: 0; min-height: 38px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--field); color: var(--text); font-size: 10px; }
 .book-details-metadata { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 17px; }
 .book-details-metadata > div { display: grid; gap: 5px; min-width: 74px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: color-mix(in srgb, var(--green-pale) 42%, var(--surface)); }
 .book-details-metadata span, .book-details-location small { color: var(--muted); font-size: 8px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; }
@@ -600,6 +604,7 @@ dialog::backdrop { background: #17211c75; backdrop-filter: blur(3px); }
   .book-details-art { padding-right: 10px; }
   .book-details-cover { width: 112px; }
   .book-details-copy h2 { font-size: 20px; }
+  .book-details-quick-controls { grid-template-columns: 1fr; }
   .book-details-copy dl > div { grid-template-columns: minmax(68px, .7fr) minmax(0, 1.3fr); gap: 8px; }
   .suggest-dialog { width: calc(100% - 18px); max-height: calc(100dvh - 18px); }
   .suggest-dialog-inner { padding: 23px 15px; }

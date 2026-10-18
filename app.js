@@ -580,20 +580,41 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>
         </button>`
       : "";
+    const quickControls = canEditLibrary()
+      ? `<div class="book-details-quick-controls">
+          <label><span>READING STATUS</span><select data-details-status="${safeText(book.id)}" aria-label="Reading status for ${safeText(book.title)}">
+            ${Object.entries(STATUS).map(([key, label]) => `<option value="${key}" ${book.status === key ? "selected" : ""}>${safeText(label)}</option>`).join("")}
+          </select></label>
+          <label><span>BOOKSHELF / BOOKCASE</span><select data-details-placement="${safeText(book.id)}" aria-label="Bookshelf or bookcase for ${safeText(book.title)}">
+            <option value="floor" ${book.bookshelf_id ? "" : "selected"}>Waiting on the floor</option>
+            ${bookshelves.map(shelf => {
+              const shelfCount = Math.max(2, Number(shelf.shelf_count) || 2);
+              return `<optgroup label="${safeText(shelf.name)}">${Array.from({ length: shelfCount }, (_, index) => {
+                const number = index + 1;
+                const selected = book.bookshelf_id === shelf.id && Number(book.bookshelf_shelf) === number;
+                return `<option value="${safeText(shelf.id)}:${number}" ${selected ? "selected" : ""}>Shelf ${number}</option>`;
+              }).join("")}</optgroup>`;
+            }).join("")}
+          </select></label>
+        </div>`
+      : "";
     $("#book-details-content").innerHTML = `<div class="book-details-layout">
       <div class="book-details-art">${coverMarkup}<span class="book-details-status status-${safeText(book.status || "want")}">${safeText(STATUS[book.status] || STATUS.want)}</span></div>
       <div class="book-details-copy">
         <div class="book-details-heading"><span class="eyebrow">FROM YOUR LIBRARY</span>${editButton}</div>
         <h2 id="book-details-title">${safeText(book.title)}</h2>
         <p class="book-details-authors">${details.map(([, value]) => safeText(value)).join(", ")}</p>
+        ${quickControls}
         ${metadata.length ? `<div class="book-details-metadata">${metadata.map(([label, value]) => `<div><span>${safeText(label)}</span><strong>${safeText(value)}</strong></div>`).join("")}</div>` : ""}
         ${tags.length ? `<div class="book-details-tags" aria-label="Tags">${tags.map(tag => `<span>${safeText(tag)}</span>`).join("")}</div>` : ""}
         <div class="book-details-location"><span class="book-details-location-icon" aria-hidden="true">⌂</span><div><small>BOOKSHELF</small><strong>${safeText(shelfLabel)}</strong></div></div>
         ${book.notes ? `<section class="book-details-notes"><span class="eyebrow">YOUR NOTES</span><p>${safeText(book.notes)}</p></section>` : ""}
       </div>
     </div>`;
-    $("#book-details-dialog").showModal();
-    $("#book-details-dialog").focus({ preventScroll: true });
+    const dialog = $("#book-details-dialog");
+    dialog.dataset.bookId = book.id;
+    dialog.showModal();
+    dialog.focus({ preventScroll: true });
     const cover = $("#book-details-content [data-book-detail-cover]");
     if (cover) {
       getDisplayCoverUrl(cover.dataset.bookDetailCover).then(url => {
@@ -770,6 +791,32 @@
     }
     books = books.map(item => item.id === bookId ? { ...item, ...placement } : item);
     render();
+    refreshBookDetailsQuickControls(books.find(item => item.id === bookId));
+  }
+
+  function refreshBookDetailsQuickControls(book) {
+    const dialog = $("#book-details-dialog");
+    if (!book || dialog.dataset.bookId !== book.id) return;
+    const status = dialog.querySelector(".book-details-status");
+    if (status) {
+      status.className = `book-details-status status-${book.status || "want"}`;
+      status.textContent = STATUS[book.status] || STATUS.want;
+    }
+    const statusSelect = dialog.querySelector("[data-details-status]");
+    if (statusSelect) statusSelect.value = book.status || "want";
+    const placementSelect = dialog.querySelector("[data-details-placement]");
+    if (placementSelect) {
+      placementSelect.value = book.bookshelf_id
+        ? `${book.bookshelf_id}:${Number(book.bookshelf_shelf)}`
+        : "floor";
+    }
+    const bookshelf = bookshelves.find(item => item.id === book.bookshelf_id);
+    const shelfNumber = Number(book.bookshelf_shelf);
+    const shelfLabel = bookshelf && Number.isInteger(shelfNumber) && shelfNumber > 0
+      ? `${bookshelf.name}, shelf ${shelfNumber}`
+      : "Waiting on the floor";
+    const location = dialog.querySelector(".book-details-location strong");
+    if (location) location.textContent = shelfLabel;
   }
 
   async function createBookshelf(event) {
@@ -1075,10 +1122,12 @@
       }
       books = books.map(item => item.id === id ? updated : item);
       render();
+      refreshBookDetailsQuickControls(updated);
       notify(`Marked “${book.title}” as ${STATUS[status].toLocaleLowerCase()}.`);
     } catch (error) {
       notify(`Could not update book: ${error.message}`);
       await loadBooks();
+      refreshBookDetailsQuickControls(books.find(item => item.id === id));
     }
   }
 
@@ -1157,6 +1206,28 @@
     $("#book-grid").addEventListener("change", event => {
       const select = event.target.closest("[data-status]");
       if (select) updateStatus(select.dataset.status, select.value);
+    });
+    $("#book-details-dialog").addEventListener("change", event => {
+      const status = event.target.closest("[data-details-status]");
+      if (status) {
+        updateStatus(status.dataset.detailsStatus, status.value);
+        return;
+      }
+      const placement = event.target.closest("[data-details-placement]");
+      if (!placement) return;
+      let bookshelfId = null;
+      let shelfNumber = null;
+      if (placement.value !== "floor") {
+        const separator = placement.value.lastIndexOf(":");
+        bookshelfId = placement.value.slice(0, separator);
+        shelfNumber = Number(placement.value.slice(separator + 1));
+      }
+      saveBookshelfPlacement(placement.dataset.detailsPlacement, bookshelfId, shelfNumber)
+        .then(() => notify(bookshelfId ? "Book moved to shelf." : "Book moved to the floor."))
+        .catch(error => {
+          refreshBookDetailsQuickControls(books.find(item => item.id === placement.dataset.detailsPlacement));
+          notify(`Could not move book: ${error.message}`);
+        });
     });
     document.querySelectorAll("[data-filter]").forEach(button => button.addEventListener("click", () => {
       activateFilter(button.dataset.filter);
